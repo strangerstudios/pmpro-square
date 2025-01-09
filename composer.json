@@ -1,0 +1,5 @@
+{
+    "require": {
+        "square/square": "^39.0"
+    }
+}
