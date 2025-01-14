@@ -4,8 +4,8 @@ use Square\Authentication\BearerAuthCredentialsBuilder;
 use Square\Environment;
 
 //load classes init method
-add_action('init', array('PMProGateway_Square', 'init'));
-add_filter('pmpro_is_ready', array( 'PMProGateway_Square', 'pmpro_is_square_ready' ), 999, 1 );
+add_action( 'init', array('PMProGateway_Square', 'init' ) );
+add_filter( 'pmpro_is_ready', array( 'PMProGateway_Square', 'pmpro_is_square_ready' ), 999, 1 );
 
 class PMProGateway_Square extends PMProGateway {
 
@@ -42,18 +42,14 @@ class PMProGateway_Square extends PMProGateway {
 
 		if ( $gateway == "square" ) {			
 
-			add_action( 'admin_init', array( 'PMProGateway_Square', 'pmpro_square_oauth_connect' ) );
-			add_action( 'admin_init', array( 'PMProGateway_Square', 'pmpro_square_oauth_disconnect' ) );
-			add_action( 'admin_init', array( 'PMProGateway_Square', 'pmpro_square_save_connection' ) );
-			add_action( 'admin_init', array( 'PMProGateway_Square', 'pmpro_square_save_disconnection' ) );
-
 			add_filter( 'pmpro_include_payment_information_fields', '__return_false');
 			add_filter( 'pmpro_required_billing_fields', array( 'PMProGateway_Square', 'pmpro_required_billing_fields' ) );
 			add_filter( 'pmpro_checkout_default_submit_button', array( 'PMProGateway_Square', 'pmpro_checkout_default_submit_button' ) );
-			add_filter( 'pmpro_checkout_before_change_membership_level', array( 'PMProGateway_Square', 'pmpro_checkout_before_change_membership_level' ), 10, 2);
+			// add_filter( 'pmpro_checkout_before_change_membership_level', array( 'PMProGateway_Square', 'pmpro_checkout_before_change_membership_level' ), 10, 2);
 			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_create_default_subscription_plan' ) );
 			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_refresh_locations_auto' ) );
 			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_create_webhooks_auto' ) );
+			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_create_default_subscription_plan_manual' ) );
 			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_refresh_locations_manual' ) );
 			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_create_webhooks_manual' ) );
 
@@ -102,7 +98,6 @@ class PMProGateway_Square extends PMProGateway {
 			'gateway_environment',
 			'square_sandbox_personal_access_token',
 			'square_sandbox_location_id',
-			'square_live_application_id',
 			'square_live_personal_access_token',
 			'square_live_location_id',
 			'square_billingaddress',
@@ -139,14 +134,14 @@ class PMProGateway_Square extends PMProGateway {
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
 			PMProGateway_Square::$base_url = 'https://connect.squareup.com';
-			PMProGateway_Square::$application_id = get_option( 'pmpro_square_live_application_id' );
-			PMProGateway_Square::$access_token = get_option( 'pmpro_square_live_access_token' );
+			//PMProGateway_Square::$application_id = get_option( 'pmpro_square_live_application_id' );
+			//PMProGateway_Square::$access_token = get_option( 'pmpro_square_live_access_token' );
 			PMProGateway_Square::$personal_access_token = get_option( 'pmpro_square_live_personal_access_token' );
 			PMProGateway_Square::$api_url = 'https://connect.squareup.com';
 		} else {
 			PMProGateway_Square::$base_url = 'https://connect.squareupsandbox.com';
-			PMProGateway_Square::$application_id = get_option( 'pmpro_square_sandbox_application_id' );
-			PMProGateway_Square::$access_token = get_option( 'pmpro_square_sandbox_access_token' );
+			//PMProGateway_Square::$application_id = get_option( 'pmpro_square_sandbox_application_id' );
+			//PMProGateway_Square::$access_token = get_option( 'pmpro_square_sandbox_access_token' );
 			PMProGateway_Square::$personal_access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
 			PMProGateway_Square::$api_url = 'https://connect.squareupsandbox.com';
 		}
@@ -158,6 +153,7 @@ class PMProGateway_Square extends PMProGateway {
 			BearerAuthCredentialsBuilder::init( PMProGateway_Square::$personal_access_token )
 		)
 		->environment( ( $environment == 'live' ) ? Environment::LIVE : Environment::SANDBOX )
+		->squareVersion( '2024-12-18' )
 		->build();
 		
 	}
@@ -184,119 +180,33 @@ class PMProGateway_Square extends PMProGateway {
 
 	}
 
-	static function pmpro_square_oauth_connect() {
+	static function pmpro_square_create_default_subscription_plan_manual() {
 
-		if ( empty( $_GET['pmpro_square_oauth_connect'] ) ) {
+		if ( empty( $_GET['pmpro_square_create_default_subscription'] ) ) {
 			return false;
 		}
 
-		$environment = get_option( 'pmpro_gateway_environment' );
-
-		$url = add_query_arg(
-			array(
-				'environment' => $environment,
-				'return_url' => wp_nonce_url( admin_url( 'admin.php?pmpro_square_connected' ), 'pmpro_square_connected' ),	
-				'v' => time(),
-			),
-			'https://websitetestarea.com/pmpro/square/connect.php'
-		);
-		wp_redirect( $url );
-		exit;
-
-		/*
-		PMProGateway_Square::pmpro_square_setup();
-
-		$scope = 'MERCHANT_PROFILE_READ PAYMENTS_READ PAYMENTS_WRITE ORDERS_READ ORDERS_WRITE CUSTOMERS_READ CUSTOMERS_WRITE SETTLEMENTS_READ ITEMS_READ ITEMS_WRITE PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS DEVELOPER_APPLICATION_WEBHOOKS_WRITE';
-		//$scope = 'MERCHANT_PROFILE_READ PAYMENTS_READ PAYMENTS_WRITE ORDERS_READ ORDERS_WRITE CUSTOMERS_READ CUSTOMERS_WRITE SETTLEMENTS_READ ITEMS_READ ITEMS_WRITE PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS';
-
-		$code_verifier = uniqid() . time();
-		pmpro_setOption( 'square_code_verifier_' . $environment, $code_verifier );
-
-		$return_url = wp_nonce_url( admin_url( 'admin.php?pmpro_square_connected' ), 'pmpro_square_connected' );
-		// OAuth URL to redirect the user to
-		$auth_url = PMProGateway_Square::$base_url . '/oauth2/authorize' . 
-				'?client_id=' . PMProGateway_Square::$application_id . 
-				'&scope=' . urlencode( $scope ) . 
-				'&session=false' .
-				'&code_challenge=' . hash( 'sha256', $code_verifier ) .
-				'&redirect_uri=' . urlencode( $redirect_url );
-		wp_redirect( $auth_url );
-		exit;
-		*/
-		
-	}
-
-	static function pmpro_square_oauth_disconnect() {
-
-		if ( empty( $_GET['pmpro_square_oauth_disconnect'] ) ) {
+		if ( ! empty( $_GET['_wpnonce'] ) && ! wp_verify_nonce( $_GET['_wpnonce'], 'pmpro_square_create_default_subscription' ) ) {
 			return false;
 		}
 
-		PMProGateway_Square::pmpro_square_setup();
-		$environment = get_option( 'pmpro_gateway_environment' );
-
-		$url = add_query_arg(
-			array(
-				'environment' => $environment,
-				'access_token' => PMProGateway_Square::$access_token,
-				'return_url' => wp_nonce_url( admin_url( 'admin.php' ), 'pmpro_square_disconnected', 'pmpro_square_disconnected' ),	
-				'v' => time(),
-			),
-			'https://websitetestarea.com/pmpro/square/disconnect.php'
-		);
-		wp_redirect( $url );
-		exit;
-	}
-
-	static function pmpro_square_save_connection() {
-
-		if ( ! isset( $_GET['pmpro_square_connected'] ) || empty( $_GET['merchant_id'] ) || empty( $_GET['access_token'] ) || empty( $_GET['refresh_token'] ) ) {
-			return;
+		$environment = pmpro_getParam( 'pmpro_square_create_default_subscription', 'GET' );
+		$result = PMProGateway_Square::pmpro_square_create_default_subscription_plan( $environment );
+		if ( ! empty( $result['success'] ) ) {
+			?>
+			<div class="updated notice">
+				<p><?php esc_html_e( 'Subscriptions are now enabled', 'pmpro-square' ); ?></p>
+			</div>
+			<?php
+		} else {
+			?>
+			<div class="error notice">
+				<p><?php esc_html_e( 'Subscriptions could not be enabled', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
+			</div>
+			<?php	
 		}
 
-		_log( 'setting oauth data' );
-
-		$environment = pmpro_getOption( 'gateway_environment' );
-
-		$access_token = sanitize_text_field( $_GET['access_token'] );
-		pmpro_setOption( 'square_' . $environment . '_access_token', $access_token );
-
-		$refresh_token = sanitize_text_field( $_GET['refresh_token'] );
-		pmpro_setOption( 'square_' . $environment . '_refresh_token', $refresh_token );
-
-		$merchant_id = sanitize_text_field( $_GET['merchant_id'] );
-		pmpro_setOption( 'square_' . $environment . '_merchant_id', $merchant_id );
-
-		PMProGateway_Square::pmpro_square_refresh_locations( $environment );
-		PMProGateway_Square::pmpro_square_create_webhooks( $environment );
-
-		wp_safe_redirect( admin_url( 'admin.php?page=pmpro-paymentsettings' ) );
-		exit;
-
 	}
-
-	static function pmpro_square_save_disconnection() {
-
-		if ( ! isset( $_GET['pmpro_square_disconnected'] ) || ! wp_verify_nonce( $_GET['pmpro_square_disconnected'], 'pmpro_square_disconnected' ) ) {
-			return;
-		}
-
-		_log( 'disconnecting from square' );
-
-		$environment = pmpro_getOption( 'gateway_environment' );
-
-		pmpro_setOption( 'square_' . $environment . '_access_token', '' );
-		pmpro_setOption( 'square_' . $environment . '_refresh_token', '' );
-		pmpro_setOption( 'square_' . $environment . '_merchant_id', '' );
-
-		update_option( 'pmpro_square_locations_' . $environment, '' );
-		update_option( 'pmpro_square_webhook_' . $environment, '' );
-
-		wp_safe_redirect( admin_url( 'admin.php?page=pmpro-paymentsettings' ) );
-		exit;
-
-	}
-
 
 	/**
 	 * Creates the default subscription plan in Square to then build all variations from
@@ -321,13 +231,13 @@ class PMProGateway_Square extends PMProGateway {
 			if ( $api_response->isSuccess() ) {
 				$catalog_object = $api_response->getResult()->getCatalogObject();
 				pmpro_setOption( 'square_subscription_plan_id', $catalog_object->getId() );
-				return true;
+				return array( 'success' => true, 'plan' => $catalog_object->getId() );
 			} else {
-				$errors = $api_response->getErrors();
+				return array( 'error' => $api_response->getErrors() );
 			}
 		}
 
-		return false;
+		return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
 
 	}
 
@@ -343,7 +253,7 @@ class PMProGateway_Square extends PMProGateway {
 
 		$environment = pmpro_getParam( 'pmpro_square_refresh_locations', 'GET' );
 		$result = PMProGateway_Square::pmpro_square_refresh_locations( $environment );
-		if ( $result ) {
+		if ( ! empty( $result['success'] ) ) {
 			?>
 			<div class="updated notice">
 				<p><?php esc_html_e( 'Locations have been refreshed', 'pmpro-square' ); ?></p>
@@ -352,7 +262,7 @@ class PMProGateway_Square extends PMProGateway {
 		} else {
 			?>
 			<div class="error notice">
-				<p><?php esc_html_e( 'Locations could not be refreshed', 'pmpro-square' ); ?></p>
+				<p><?php esc_html_e( 'Locations could not be refreshed', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
 			</div>
 			<?php	
 		}
@@ -382,14 +292,13 @@ class PMProGateway_Square extends PMProGateway {
 					$locations[ $location->getId() ] = $location->getName();
 				}
 				update_option( 'pmpro_square_locations_' . $environment, $locations );
-				return true;
+				return array( 'success' => true );
 			} else {
-				$errors = $api_response->getErrors();
-				_log( $errors, 'locations errors' );
+				return array( 'error' => $api_response->getErrors() );
 			}
 		}
 
-		return false;
+		return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
 		
 	}
 
@@ -420,7 +329,7 @@ class PMProGateway_Square extends PMProGateway {
 		} else {
 			?>
 			<div class="error notice">
-				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php echo $result['error']; ?></p>
+				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
 			</div>
 			<?php	
 		}
@@ -472,7 +381,7 @@ class PMProGateway_Square extends PMProGateway {
 					'notification_url' => $webhook_url,
 					'event_types' => $event_types,
 				),
-				'api_version' => '2024-11-20',
+				'api_version' => '2024-12-18',
 			);
 		
 			$response = wp_remote_post( PMProGateway_Square::$base_url . '/v2/webhooks/subscriptions', array(
@@ -505,37 +414,6 @@ class PMProGateway_Square extends PMProGateway {
 
 			return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
 
-			/*
-			$url = PMProGateway_Square::pmpro_square_get_webhook_url();
-			
-			$event_types = [
-				"payment.created",  // Subscribe to payment created events
-				"payment.succeeded", // Subscribe to successful payment events
-				"payment.failed", // Subscribe to failed payment events
-				"subscription.created", // Subscribe to subscription created events
-				"subscription.updated", // Subscribe to subscription updated events
-				"subscription.canceled" // Subscribe to subscription canceled events
-			];
-			$subscription = new \Square\Models\WebhookSubscription();
-			$subscription->setName( 'PMPro Webhook Subscription' );
-			$subscription->setEnabled( true );
-			$subscription->setEventTypes( $event_types );
-			$subscription->setNotificationUrl( $url );
-			
-			$body = new \Square\Models\CreateWebhookSubscriptionRequest( $subscription );
-			$body->setIdempotencyKey( PMProGateway_Square::pmpro_square_get_idempotency_key() );
-
-			$api_response = PMProGateway_Square::$client->getWebhookSubscriptionsApi()->createWebhookSubscription( $body );
-			
-			if ( $api_response->isSuccess() ) {
-				$result = $api_response->getResult();
-				_log( 'Webook subscription created' );
-				update_option( 'pmpro_square_webhooks', $event_types );
-			} else {
-				$errors = $api_response->getErrors();
-				_log( $errors, 'Webook subscription FAILED' );
-			}
-			*/			
 		}
 			
 	}
@@ -571,14 +449,28 @@ class PMProGateway_Square extends PMProGateway {
 
 	<?php if ( ! empty( $values['square_sandbox_personal_access_token'] ) ) { ?>
 		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
+			<th scope="row">
+				<label><?php esc_html_e( 'Subscriptions Status', 'pmpro-square' ); ?>:</label>
+			</th>
+			<td>
+				<?php if ( ! pmpro_getOption( 'square_subscription_plan_id' ) ) { ?>
+					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=sandbox' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
+				<?php } else { ?>
+					<div class="notice notice-success inline">
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?></p>
+					</div>
+				<?php } ?>
+			</td>
+		</tr>
+		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
+			<th scope="row">
 				<label for="square_sandbox_webhooks"><?php esc_html_e( 'Sandbox Webhooks', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
 				<?php
 				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
 				if ( $webhook ) {
-					echo join( ', ', $webhook['event_types'] );
+					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
 				} else {
 					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
@@ -825,67 +717,31 @@ class PMProGateway_Square extends PMProGateway {
 	}
 
 	/**
-	 * Instead of change membership levels, send users to Square to pay.
-	 */
-	static function pmpro_checkout_before_change_membership_level( $user_id, $morder ) {
-
-		global $wpdb, $discount_code_id;
-
-		//if no order, no need to pay
-		if ( empty( $morder ) ) {
-			return;
-		}
-
-		// Bail for free checkouts.
-		if ( $morder->gateway != 'square' ) {
-			return;
-		}
-
-		$morder->user_id = $user_id;
-		$morder->saveOrder();
-
-		//save discount code use
-		if ( ! empty( $discount_code_id ) ) {
-			$wpdb->query(
-				$wpdb->prepare(
-					"INSERT INTO {$wpdb->pmpro_discount_codes_uses} 
-						( code_id, user_id, order_id, timestamp ) 
-						VALUES( %d, %d, %s, %s )",
-					$discount_code_id
-				),
-				$morder->user_id,
-				$morder->id,
-				current_time( 'mysql' )
-			);
-		}
-
-		do_action( "pmpro_before_send_to_square", $user_id, $morder );
-
-		$morder->Gateway->sendToSquare( $morder );
-
-	}
-
-	/**
 	 * Process checkout.
-	 *
 	 */
 	function process( &$order ) {
-
+		
 		if ( empty( $order->code ) ) {
 			$order->code = $order->getRandomCode();
 		}
 
-		//clean up a couple values
-		$order->payment_type = "Square";
-		$order->CardType = "";
-		$order->cardtype = "";
-
-		//just save, the user will go to Square to pay
-		$order->status = "pending";
+		// clean up a couple values
+		$order->payment_type = 'Square';
+		$order->CardType     = '';
+		$order->cardtype     = '';
+		$order->status = 'token';
 		$order->saveOrder();
-		return true;
+
+		pmpro_save_checkout_data_to_order( $order );
+
+		do_action( 'pmpro_before_send_to_square', $order->user_id, $order );
+
+		$this->sendToSquare( $order );
 	}
 
+
+
+	/// Document this.
 	static function pmpro_square_get_idempotency_key( $key_input = '', $append_key_input = true ) {
 
 		if ( '' === $key_input ) {
@@ -895,6 +751,7 @@ class PMProGateway_Square extends PMProGateway {
 		return substr( apply_filters( 'pmpro_square_idempotency_key', sha1( get_option( 'siteurl' ) . $key_input ) . ( $append_key_input ? ':' . $key_input : '' ) ), -40 );
 	}
 
+	/// Document this.
 	static function pmpro_square_get_location_id() {
 
 		$environment = pmpro_getOption( 'gateway_environment' );
@@ -916,6 +773,9 @@ class PMProGateway_Square extends PMProGateway {
 		global $pmpro_currency, $current_user;
 		
 		PMProGateway_Square::pmpro_square_setup();
+
+		$payment_link = new \Square\Models\CreatePaymentLinkRequest();
+		$payment_link->setIdempotencyKey( PMProGateway_Square::pmpro_square_get_idempotency_key() );
 
 		$square_order = new \Square\Models\Order( PMProGateway_Square::pmpro_square_get_location_id() );
 		$prepopulate = new \Square\Models\PrePopulatedData();
@@ -959,84 +819,134 @@ class PMProGateway_Square extends PMProGateway {
 
 		}
 
-		//taxes on initial amount
-		$initial_payment = $order->subtotal;
-		$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
-		$initial_payment = pmpro_round_price( (float)$initial_payment + (float)$initial_payment_tax );
-		$initial_payment = $initial_payment * 100; // Square works in cents.
+		$checkout_options = new \Square\Models\CheckoutOptions();
+		$checkout_options->setAskForShippingAddress( false );
+		$checkout_options->setRedirectUrl( add_query_arg( 'pmpro_level', $order->membership_level->id, pmpro_url( 'confirmation' ) ) );
 
-		// Define the price for the subscription
-		$price_money = new \Square\Models\Money();
-		$price_money->setAmount( $initial_payment );
-		$price_money->setCurrency( $pmpro_currency );
-
+		/*
+		echo '<pre>';
+		var_dump( $order );
+		echo '</pre>';
+		exit;
+		*/
+		
 		// Recurring membership
 		if ( pmpro_isLevelRecurring( $order->membership_level ) ) {
 
-			$recurring_price = number_format( $order->membership_level->billing_amount, 2, ".", "" );
-			$recurring_price = $recurring_price * 100; // Square works in cents.
-
+			$recurring_amount = pmpro_round_price( (float) $order->membership_level->billing_amount ) * 100; // Square works in cents.
 			$recurring_price_money = new \Square\Models\Money();
-			$recurring_price_money->setAmount( $recurring_price );
+			$recurring_price_money->setAmount( $recurring_amount );
 			$recurring_price_money->setCurrency( $pmpro_currency );
 
-			$subscription_phase = new \Square\Models\SubscriptionPhase();
-			$subscription_phase->setRecurringPriceMoney( $recurring_price_money );
+			$subscription_plan_variation_id = pmpro_getOption( 'square_plan_variation_id_' . $order->membership_level->id );
 
-			//figure out days based on period
-			if ( $order->BillingPeriod == "Day" ){
-				$subscription_phase->setCadence( 'DAILY' );
-			} else if ( $order->BillingPeriod == "Week" ) {
-				$subscription_phase->setCadence( 'WEEKLY' );
-			} else if ( $order->BillingPeriod == "Month" ) {
-				$subscription_phase->setCadence( 'MONTHLY' );
-			} else if ( $order->BillingPeriod == "Year" ) {
-				$subscription_phase->setCadence( 'YEARLY' );
+			if ( ! $subscription_plan_variation_id ) {
+
+				// Get subscription plan ID. If not there, create it.
+				$subscription_plan = pmpro_getOption( 'square_subscription_plan_id' );
+				if ( empty( $subscription_plan ) ) {
+					$result = pmpro_square_create_default_subscription_plan();
+					if ( empty( $result['success'] ) ) {
+						echo 'No primary subscription plan could be made';
+						exit;
+					}
+					$subscription_plan = $result['plan'];
+				}
+			
+				$pricing = new \Square\Models\SubscriptionPricing();
+				$pricing->setType( 'STATIC' );
+
+				if ( $order->membership_level->initial_payment ) {
+					// Define the initial price.
+					$initial_payment = $order->subtotal;
+					$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
+					$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
+					$initial_payment = $initial_payment * 100; // Square works in cents.
+
+					$initial_price_money = new \Square\Models\Money();
+					$initial_price_money->setAmount( $initial_payment );
+					$initial_price_money->setCurrency( $pmpro_currency );
+
+					$pricing->setPriceMoney( $initial_price_money );
+				}
+
+				//figure out days based on period
+				if ( $order->membership_level->cycle_period == "Day" ) {
+					$cadence = 'DAILY';
+					//$subscription_phase->setCadence( 'DAILY' );
+				} else if ( $order->membership_level->cycle_period == "Week" ) {
+					$cadence = 'WEEKLY';
+					//$subscription_phase->setCadence( 'WEEKLY' );
+				} else if ( $order->membership_level->cycle_period == "Month" ) {
+					$cadence = 'MONTHLY';
+					//$subscription_phase->setCadence( 'MONTHLY' );
+				} else if ( $order->membership_level->cycle_period == "Year" ) {
+					$cadence = 'ANNUAL';
+					//$subscription_phase->setCadence( 'ANNUAL' );
+				}
+				
+				$subscription_phase = new \Square\Models\SubscriptionPhase( $cadence );
+				$subscription_phase->setOrdinal( 0 ); // The order in which the phase is to be processed.
+				$subscription_phase->setPricing( $pricing );
+				$subscription_phase->setRecurringPriceMoney( $recurring_price_money );
+
+				$number_of_rebills = '';
+				if ( ! empty( $order->membership_level->billing_limit ) ) {
+					$number_of_rebills = $order->membership_level->billing_limit;
+				}
+				if ( $number_of_rebills ) {
+					$subscription_phase->setPeriods( $number_of_rebills );
+				}
+	
+				$phases = array( $subscription_phase );
+
+				$subscription_plan_variation_data = new \Square\Models\CatalogSubscriptionPlanVariation( $order->membership_level->name, $phases );
+				$subscription_plan_variation_data->setSubscriptionPlanId( $subscription_plan );
+
+				
+				$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN_VARIATION', '#1' );
+				$object->setSubscriptionPlanVariationData( $subscription_plan_variation_data );
+
+				$body = new \Square\Models\UpsertCatalogObjectRequest( PMProGateway_Square::pmpro_square_get_idempotency_key(), $object );
+
+				$api_response = PMProGateway_Square::$client->getCatalogApi()->upsertCatalogObject( $body );
+
+				if ( $api_response->isSuccess() ) {
+					$catalog_object = $api_response->getResult()->getCatalogObject();
+					$subscription_plan_variation_id = $catalog_object->getId();
+					pmpro_setOption( 'square_plan_variation_id_' . $order->membership_level->id, $subscription_plan_variation_id );
+				} else {
+					$errors = $api_response->getErrors();
+					echo 'No subscription plan variation: ';
+					var_dump( $errors );
+					_log( $errors, 'No subscription plan variation' );
+					exit;
+				}
+
 			}
 
-			$number_of_rebills = '';
-			if ( ! empty( $order->membership_level->billing_limit ) ) {
-				$number_of_rebills = $order->membership_level->billing_limit;
-			}
-			if ( $number_of_rebills ) {
-				$subscription_phase->setPeriods( $number_of_rebills );
-			}
-
-			// TODO: Set discount.
-			/*
-			$discount_ids = ['5PFBH6YH5SB2F63FOIHJ7HWR'];
-			$pricing1 = new \Square\Models\SubscriptionPricing();
-			$pricing1->setType('RELATIVE');
-			$pricing1->setDiscountIds($discount_ids);
-			*/
-
-			$phases = [$subscription_phase];
-			$subscription_plan_data = new \Square\Models\CatalogSubscriptionPlan('One-phase subscription plan for testing checkout.');
-			$subscription_plan_data->setPhases( $phases );
-
-			$object = new \Square\Models\CatalogObject( '#plan' );
-			$object->setType( 'SUBSCRIPTION_PLAN' );
-			$object->setSubscriptionPlanData( $subscription_plan_data );
-
-			$body = new \Square\Models\UpsertCatalogObjectRequest( '{UNIQUE_KEY}', $object );
-
-			$api_response = $client->getCatalogApi()->upsertCatalogObject( $body );
-
-			if ( $api_response->isSuccess() ) {
-				$result = $api_response->getResult();
-			} else {
-				$errors = $api_response->getErrors();
-			}
-
-			$number_of_rebills = '';
-
-			if ( ! empty( $order->membership_level->billing_limit ) ) {
-				$number_of_rebills = $order->membership_level->billing_limit;
-			} else {
-				$number_of_rebills = 99; //means unlimited
-			}
+			$checkout_options->setSubscriptionPlanId( $subscription_plan_variation_id );
+			
+			$quick_pay = new \Square\Models\QuickPay(
+				$order->membership_level->name,
+				$billing_price_money,
+				PMProGateway_Square::pmpro_square_get_location_id(),
+			);
+			$payment_link->setQuickPay( $quick_pay );
 		
 		} else {	
+		
+			// If one-time payment, create basic payment link with a line item.
+
+			// Define the one-time price.
+			$initial_payment = $order->subtotal;
+			$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
+			$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
+			$initial_payment = $initial_payment * 100; // Square works in cents.
+
+			$price_money = new \Square\Models\Money();
+			$price_money->setAmount( $initial_payment );
+			$price_money->setCurrency( $pmpro_currency );
 
 			$order_line_item = new \Square\Models\OrderLineItem( '1' );
 			$order_line_item->setName( $order->membership_level->name );
@@ -1046,16 +956,10 @@ class PMProGateway_Square extends PMProGateway {
 				$order_line_item,
 			];
 			$square_order->setLineItems( $line_items );
-			
+			$payment_link->setOrder( $square_order );
+
 		}
 	
-		$checkout_options = new \Square\Models\CheckoutOptions();
-		$checkout_options->setAskForShippingAddress( false );
-		$checkout_options->setRedirectUrl( add_query_arg( 'pmpro_level', $order->membership_level->id, pmpro_url( 'confirmation' ) ) );
-
-		$payment_link = new \Square\Models\CreatePaymentLinkRequest();
-		$payment_link->setIdempotencyKey( PMProGateway_Square::pmpro_square_get_idempotency_key() );
-		$payment_link->setOrder( $square_order );
 		$payment_link->setPrePopulatedData( $prepopulate );
 		$payment_link->setCheckoutOptions( $checkout_options );
 
@@ -1084,7 +988,7 @@ class PMProGateway_Square extends PMProGateway {
 			return;
 		}
 
-		_log( 'Webhook listener' );
+		_log( '========= WEBHOOK LISTENER' );
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		$webhook_data = get_option( 'pmpro_square_webhook_' . $environment );
@@ -1095,12 +999,20 @@ class PMProGateway_Square extends PMProGateway {
 		}
 
 		$headers = apache_request_headers();
+		_log( $headers, 'HEADERS' );
 		$signature = $headers["X-Square-Hmacsha256-Signature"];
 		
+		// Signature completely empty (Throw a warning/bail) /// Temporary.
+		if ( empty( $signature ) ) {
+			_log( 'No signature' );
+			http_response_code( 403 );
+			exit;
+		}
+
 		$body = '';   
-		$handle = fopen('php://input', 'r');
-		while(!feof($handle)) {
-			$body .= fread($handle, 1024);
+		$handle = fopen( 'php://input', 'r' );
+		while( ! feof( $handle ) ) {
+			$body .= fread( $handle, 1024 );
 		}
 
 		if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signature, $webhook_data['signature_key'], PMProGateway_Square::pmpro_square_get_webhook_url() ) ) {
