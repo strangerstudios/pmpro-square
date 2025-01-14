@@ -833,6 +833,16 @@ class PMProGateway_Square extends PMProGateway {
 		// Recurring membership
 		if ( pmpro_isLevelRecurring( $order->membership_level ) ) {
 
+			// Define the initial price.
+			$initial_payment = $order->subtotal;
+			$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
+			$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
+			$initial_payment = $initial_payment * 100; // Square works in cents.
+
+			$initial_price_money = new \Square\Models\Money();
+			$initial_price_money->setAmount( $initial_payment );
+			$initial_price_money->setCurrency( $pmpro_currency );
+			
 			$recurring_amount = pmpro_round_price( (float) $order->membership_level->billing_amount ) * 100; // Square works in cents.
 			$recurring_price_money = new \Square\Models\Money();
 			$recurring_price_money->setAmount( $recurring_amount );
@@ -840,7 +850,7 @@ class PMProGateway_Square extends PMProGateway {
 
 			$subscription_plan_variation_id = pmpro_getOption( 'square_plan_variation_id_' . $order->membership_level->id );
 
-			if ( ! $subscription_plan_variation_id ) {
+			if ( ! $subscription_plan_variation_idx ) {
 
 				// Get subscription plan ID. If not there, create it.
 				$subscription_plan = pmpro_getOption( 'square_subscription_plan_id' );
@@ -853,22 +863,9 @@ class PMProGateway_Square extends PMProGateway {
 					$subscription_plan = $result['plan'];
 				}
 			
-				$pricing = new \Square\Models\SubscriptionPricing();
-				$pricing->setType( 'STATIC' );
-
-				if ( $order->membership_level->initial_payment ) {
-					// Define the initial price.
-					$initial_payment = $order->subtotal;
-					$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
-					$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
-					$initial_payment = $initial_payment * 100; // Square works in cents.
-
-					$initial_price_money = new \Square\Models\Money();
-					$initial_price_money->setAmount( $initial_payment );
-					$initial_price_money->setCurrency( $pmpro_currency );
-
-					$pricing->setPriceMoney( $initial_price_money );
-				}
+				$recurring_pricing = new \Square\Models\SubscriptionPricing();
+				$recurring_pricing->setType( 'STATIC' );
+				$recurring_pricing->setPriceMoney( $recurring_price_money );
 
 				//figure out days based on period
 				if ( $order->membership_level->cycle_period == "Day" ) {
@@ -887,8 +884,9 @@ class PMProGateway_Square extends PMProGateway {
 				
 				$subscription_phase = new \Square\Models\SubscriptionPhase( $cadence );
 				$subscription_phase->setOrdinal( 0 ); // The order in which the phase is to be processed.
-				$subscription_phase->setPricing( $pricing );
-				$subscription_phase->setRecurringPriceMoney( $recurring_price_money );
+				//$subscription_phase->setPricing( $pricing );
+				//$subscription_phase->setRecurringPriceMoney( $recurring_price_money );
+				$subscription_phase->setPricing( $recurring_pricing );
 
 				$number_of_rebills = '';
 				if ( ! empty( $order->membership_level->billing_limit ) ) {
@@ -902,7 +900,6 @@ class PMProGateway_Square extends PMProGateway {
 
 				$subscription_plan_variation_data = new \Square\Models\CatalogSubscriptionPlanVariation( $order->membership_level->name, $phases );
 				$subscription_plan_variation_data->setSubscriptionPlanId( $subscription_plan );
-
 				
 				$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN_VARIATION', '#1' );
 				$object->setSubscriptionPlanVariationData( $subscription_plan_variation_data );
@@ -927,9 +924,10 @@ class PMProGateway_Square extends PMProGateway {
 
 			$checkout_options->setSubscriptionPlanId( $subscription_plan_variation_id );
 			
+			// The initial price is part of this quick pay part. The reecurring price is tied to the subscription phases.
 			$quick_pay = new \Square\Models\QuickPay(
 				$order->membership_level->name,
-				$billing_price_money,
+				$initial_price_money,
 				PMProGateway_Square::pmpro_square_get_location_id(),
 			);
 			$payment_link->setQuickPay( $quick_pay );
