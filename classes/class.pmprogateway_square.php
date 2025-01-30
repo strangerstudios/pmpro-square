@@ -182,14 +182,12 @@ class PMProGateway_Square extends PMProGateway {
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
 			$access_token = get_option( 'pmpro_square_live_personal_access_token' );
-			$subscription_plan_id = get_option( 'pmpro_square_live_personal_access_token' );
 		} else {
 			$access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
-			$subscription_plan_id = get_option( 'pmpro_square_sandbox_personal_access_token' );
 		}
 
 		$ready = false;
-		if ( $access_token && $subscription_plan_id ) {
+		if ( $access_token ) {
 			$ready = true;
 		} 
 
@@ -447,7 +445,7 @@ class PMProGateway_Square extends PMProGateway {
 		$existing_locations = pmpro_getOption( 'square_locations_' . $this->gateway_environment );
 
 		if ( empty( $existing_locations ) && $this->is_ready() ) {
-			$this->refresh_locations( $environment );
+			$this->refresh_locations( $this->gateway_environment );
 		}
 
 	}
@@ -513,7 +511,7 @@ class PMProGateway_Square extends PMProGateway {
 		$existing_webhooks = pmpro_getOption( 'square_webhook_' . $this->gateway_environment );
 
 		if ( empty( $existing_webhooks ) && $this->is_ready() ) {
-			$this->create_webhooks( $environment );
+			$this->create_webhooks( $this->gateway_environment );
 		}
 
 	}
@@ -610,7 +608,7 @@ class PMProGateway_Square extends PMProGateway {
 
 	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
 		<th scope="row" valign="top">
-			<label for="square_sandbox_application_id"><?php esc_html_e( 'Application ID', 'pmpro-square' ); ?>:</label>
+			<label for="square_sandbox_application_id"><?php esc_html_e( 'Sandbox Application ID', 'pmpro-square' ); ?>:</label>
 		</th>
 		<td>
 			<input type="text" id="square_sandbox_application_id" name="square_sandbox_application_id" size="60" value="<?php echo esc_attr( $values['square_sandbox_application_id'] ); ?>" />
@@ -683,7 +681,7 @@ class PMProGateway_Square extends PMProGateway {
 
 	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
 		<th scope="row" valign="top">
-			<label for="square_live_application_id"><?php esc_html_e( 'Application ID', 'pmpro-square' ); ?>:</label>
+			<label for="square_live_application_id"><?php esc_html_e( 'Live Application ID', 'pmpro-square' ); ?>:</label>
 		</th>
 		<td>
 			<input type="text" id="square_live_application_id" name="square_live_application_id" size="60" value="<?php echo esc_attr( $values['square_live_application_id'] ); ?>" />
