@@ -490,7 +490,7 @@ class PMProGateway_Square extends PMProGateway {
 		}
 
 		$environment = pmpro_getParam( 'pmpro_square_webhooks', 'GET' );
-		$result = $this->create_webhooks( $environment, true );
+		$result = $this->create_webhooks( $environment );
 		if ( ! empty( $result['success'] ) ) {
 			?>
 			<div class="updated notice">
@@ -521,10 +521,9 @@ class PMProGateway_Square extends PMProGateway {
 	 * Uses Personal Access Token so webhooks can be associated with customer app and not PMPro app
 	 * This requires a separate cURL request using the personal access token instead
 	 */
-	private function create_webhooks( $environment, $force = false ) {
+	private function create_webhooks( $environment ) {
 
-		$webhooks = pmpro_getOption( 'square_webhook_' . $environment );
-		if ( ( ! $webhooks || $force ) && $this->is_ready() ) {
+		if ( $this->is_ready() ) {
 
 			$this->setup();
 
