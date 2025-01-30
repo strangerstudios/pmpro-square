@@ -4,23 +4,32 @@ use Square\Authentication\BearerAuthCredentialsBuilder;
 use Square\Environment;
 
 //load classes init method
-add_action( 'init', array('PMProGateway_Square', 'init' ) );
-add_filter( 'pmpro_is_ready', array( 'PMProGateway_Square', 'pmpro_is_square_ready' ), 999, 1 );
+add_action( 'init', function(){
+	new PMProGateway_Square();
+} );
+//add_filter( 'pmpro_is_ready', array( $this, 'is_ready' ), 999, 1 );
 
 class PMProGateway_Square extends PMProGateway {
 
 	// Use this to interact with the Square API via SDK.
-	private static $base_url;
-	private static $application_id;
-	private static $access_token;
-	private static $personal_access_token;
-	private static $client;
-	private static $api_url;
+	private $environment;
+	private $base_url;
+	//private static $subscription_plan_id;
+	private $application_id;
+	private $location_id;
+	private $personal_access_token;
+	private $client;
+	private $log_file;
 
 	function __construct( $gateway = NULL ) {
 
 		$this->gateway = $gateway;
+		$this->gateway_environment = get_option( "pmpro_gateway_environment" );
+
+		$this->init();
+
 		return $this->gateway;
+
 	}
 
 	/**
@@ -28,55 +37,61 @@ class PMProGateway_Square extends PMProGateway {
 	 *
 	 * @since 1.8
 	 */
-	static function init() {
-
+	private function init() {
+		
 		//make sure Square is a gateway option
-		add_filter( 'pmpro_gateways', array( 'PMProGateway_Square', 'pmpro_gateways' ));
-		add_filter( 'pmpro_gateways_with_pending_status', array( 'PMProGateway_Square', 'pmpro_gateways_with_pending_status' ) );
+		add_filter( 'pmpro_gateways', array( $this, 'pmpro_gateways' ));
+		add_filter( 'pmpro_gateways_with_pending_status', array( $this, 'pmpro_gateways_with_pending_status' ) );
 
 		//add fields to payment settings
-		add_filter( 'pmpro_payment_options', array( 'PMProGateway_Square', 'pmpro_payment_options' ));
-		add_filter( 'pmpro_payment_option_fields', array( 'PMProGateway_Square', 'pmpro_payment_option_fields' ), 10, 2);
+		add_filter( 'pmpro_payment_options', array( $this, 'pmpro_payment_options' ));
+		add_filter( 'pmpro_payment_option_fields', array( $this, 'pmpro_payment_option_fields' ), 10, 2);
 		//code to add at checkout
 		$gateway = pmpro_getGateway();
 
-		if ( $gateway == "square" ) {			
+		if ( $gateway == "square" ) {		
 
-			add_filter( 'pmpro_include_payment_information_fields', '__return_false');
-			add_filter( 'pmpro_required_billing_fields', array( 'PMProGateway_Square', 'pmpro_required_billing_fields' ) );
-			add_filter( 'pmpro_checkout_default_submit_button', array( 'PMProGateway_Square', 'pmpro_checkout_default_submit_button' ) );
-			// add_filter( 'pmpro_checkout_before_change_membership_level', array( 'PMProGateway_Square', 'pmpro_checkout_before_change_membership_level' ), 10, 2);
-			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_create_default_subscription_plan' ) );
-			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_refresh_locations_auto' ) );
-			add_action( 'pmpro_after_saved_payment_options', array( 'PMProGateway_Square', 'pmpro_square_create_webhooks_auto' ) );
-			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_create_default_subscription_plan_manual' ) );
-			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_refresh_locations_manual' ) );
-			add_action( 'admin_notices', array( 'PMProGateway_Square', 'pmpro_square_create_webhooks_manual' ) );
+			$this->setup();
 
-			add_filter( 'pmpro_include_billing_address_fields', array(
-				'PMProGateway_Square',
-				'pmpro_include_billing_address_fields'
-			) );
+			// Enqueue Square JS on checkout page.
+			add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 
-			add_action( 'wp', array( 'PMProGateway_Square', 'webhook_listener' ), 999 );
+			add_filter( 'pmpro_required_billing_fields', array( $this, 'required_billing_fields' ) );
+			//add_filter( 'pmpro_checkout_default_submit_button', array( $this, 'pmpro_checkout_default_submit_button' ) );
+			// add_filter( 'pmpro_checkout_before_change_membership_level', array( $this, 'pmpro_checkout_before_change_membership_level' ), 10, 2);
+			//add_action( 'pmpro_after_saved_payment_options', array( $this, 'pmpro_square_create_default_subscription_plan' ) );
+			add_action( 'pmpro_after_saved_payment_options', array( $this, 'refresh_locations_auto' ) );
+			add_action( 'pmpro_after_saved_payment_options', array( $this, 'create_webhooks_auto' ) );
+			//add_action( 'admin_notices', array( $this, 'pmpro_square_create_default_subscription_plan_manual' ) );
+			add_action( 'admin_notices', array( $this, 'refresh_locations_manual' ) );
+			add_action( 'admin_notices', array( $this, 'create_webhooks_manual' ) );
 
+			add_filter( 'pmpro_include_billing_address_fields', array( $this, 'include_billing_address_fields' ) );
+			//add_filter( 'pmpro_include_payment_information_fields', '__return_false');
+			add_filter( 'pmpro_include_payment_information_fields', array( $this, 'include_payment_information_fields' ) );	
+
+			add_action( 'wp_ajax_nopriv_pmpro_square_init_order', array( $this, 'init_order' ) );
+			add_action( 'wp_ajax_pmpro_square_init_order', array( $this, 'init_order' ) );
+
+			add_action( 'wp', array( $this, 'webhook_listener' ), 999 );
+
+			$wp_upload_dir  = wp_upload_dir();
+			$this->log_file = $wp_upload_dir['basedir'] . '/pmpro-square.log';
+	
 		}
 	}
 
-	static function pmpro_gateways_with_pending_status( $gateways ) {
-
+	/*
+	public function pmpro_gateways_with_pending_status( $gateways ) {
 		$gateways[] = 'square';
 		return $gateways;
-
 	}
-
+	*/
 
 	/**
 	 * Make sure this gateway is in the gateways list
-	 *
-	 * @since 1.8
 	 */
-	static function pmpro_gateways( $gateways ) {
+	public function pmpro_gateways( $gateways ) {
 
 		if ( empty( $gateways['square'] ) ) {
 			$gateways['square'] = __( 'Square', 'pmpro-square' );
@@ -87,20 +102,21 @@ class PMProGateway_Square extends PMProGateway {
 
 	/**
 	 * Get a list of payment options that the this gateway needs/supports.
-	 *
-	 * @since 1.8
 	 */
-	static function getGatewayOptions() {
+	public static function getGatewayOptions() {
 
 		$options = array(
 			'sslseal',
 			'nuclear_HTTPS',
 			'gateway_environment',
+			'square_sandbox_application_id',
 			'square_sandbox_personal_access_token',
 			'square_sandbox_location_id',
+			'square_live_application_id',
 			'square_live_personal_access_token',
 			'square_live_location_id',
 			'square_billingaddress',
+			'square_log',
 			'currency',
 			'use_ssl',
 			'tax_state',
@@ -112,12 +128,10 @@ class PMProGateway_Square extends PMProGateway {
 
 	/**
 	 * Set payment options for payment settings page.
-	 *
-	 * @since 1.8
 	 */
-	static function pmpro_payment_options( $options ) {
+	public function pmpro_payment_options( $options ) {
 		//get square options
-		$square_options = PMProGateway_Square::getGatewayOptions();
+		$square_options = $this->getGatewayOptions();
 
 		//merge with others.
 		$options = array_merge( $square_options, $options );
@@ -125,34 +139,36 @@ class PMProGateway_Square extends PMProGateway {
 		return $options;
 	}
 
-	static function pmpro_square_setup() {
+	private function setup() {
 
-		if ( ! empty( PMProGateway_Square::$client ) ) {
+		if ( ! empty( $this->client ) ) {
 			return; // Don't run again.
 		}
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
-			PMProGateway_Square::$base_url = 'https://connect.squareup.com';
-			//PMProGateway_Square::$application_id = get_option( 'pmpro_square_live_application_id' );
-			//PMProGateway_Square::$access_token = get_option( 'pmpro_square_live_access_token' );
-			PMProGateway_Square::$personal_access_token = get_option( 'pmpro_square_live_personal_access_token' );
-			PMProGateway_Square::$api_url = 'https://connect.squareup.com';
+			$this->gateway_environment = 'live';
+			$this->base_url = 'https://connect.squareup.com';
+			$this->application_id = get_option( 'pmpro_square_live_application_id' );
+			$this->location_id = $this->get_location_id( 'live' );
+			$this->personal_access_token = get_option( 'pmpro_square_live_personal_access_token' );
+			//$this->subscription_plan_id = get_option( 'pmpro_square_live_subscription_plan_id' );
 		} else {
-			PMProGateway_Square::$base_url = 'https://connect.squareupsandbox.com';
-			//PMProGateway_Square::$application_id = get_option( 'pmpro_square_sandbox_application_id' );
-			//PMProGateway_Square::$access_token = get_option( 'pmpro_square_sandbox_access_token' );
-			PMProGateway_Square::$personal_access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
-			PMProGateway_Square::$api_url = 'https://connect.squareupsandbox.com';
+			$this->gateway_environment = 'sandbox';
+			$this->base_url = 'https://connect.squareupsandbox.com';
+			$this->application_id = get_option( 'pmpro_square_sandbox_application_id' );
+			$this->location_id = $this->get_location_id( 'sandbox' );
+			$this->personal_access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
+			//$this->subscription_plan_id = get_option( 'pmpro_square_sandbox_subscription_plan_id' );
 		}
-		if ( empty( PMProGateway_Square::$personal_access_token ) ) {
+		if ( empty( $this->personal_access_token ) ) {
 			return; // Don't proceed, we don't have the proper credentials.
 		}
-		PMProGateway_Square::$client = SquareClientBuilder::init()
+		$this->client = SquareClientBuilder::init()
 		->bearerAuthCredentials(
-			BearerAuthCredentialsBuilder::init( PMProGateway_Square::$personal_access_token )
+			BearerAuthCredentialsBuilder::init( $this->personal_access_token )
 		)
-		->environment( ( $environment == 'live' ) ? Environment::LIVE : Environment::SANDBOX )
+		->environment( ( $environment == 'live' ) ? Environment::PRODUCTION : Environment::SANDBOX )
 		->squareVersion( '2024-12-18' )
 		->build();
 		
@@ -161,26 +177,29 @@ class PMProGateway_Square extends PMProGateway {
 	/**
 	 * Check if all fields are complete
 	 */
-	static function pmpro_is_square_ready( $ready = false ){
+	private function is_ready( $ready = false ){
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
 			$access_token = get_option( 'pmpro_square_live_personal_access_token' );
+			$subscription_plan_id = get_option( 'pmpro_square_live_personal_access_token' );
 		} else {
 			$access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
+			$subscription_plan_id = get_option( 'pmpro_square_sandbox_personal_access_token' );
 		}
 
-		if ( $access_token ) {
+		$ready = false;
+		if ( $access_token && $subscription_plan_id ) {
 			$ready = true;
-		} else {
-			$ready = false;
-		}
+		} 
 
 		return $ready;
 
 	}
 
-	static function pmpro_square_create_default_subscription_plan_manual() {
+	/*
+	We do not need this anymore, we are creating one subscription plan per membership level instead.
+	private function create_default_subscription_plan_manual() {
 
 		if ( empty( $_GET['pmpro_square_create_default_subscription'] ) ) {
 			return false;
@@ -191,7 +210,7 @@ class PMProGateway_Square extends PMProGateway {
 		}
 
 		$environment = pmpro_getParam( 'pmpro_square_create_default_subscription', 'GET' );
-		$result = PMProGateway_Square::pmpro_square_create_default_subscription_plan( $environment );
+		$result = $this->create_default_subscription_plan( $environment );
 		if ( ! empty( $result['success'] ) ) {
 			?>
 			<div class="updated notice">
@@ -208,40 +227,195 @@ class PMProGateway_Square extends PMProGateway {
 
 	}
 
-	/**
-	 * Creates the default subscription plan in Square to then build all variations from
-	 */
-	static function pmpro_square_create_default_subscription_plan() {
+	private function create_default_subscription_plan_auto() {
 
-		$subscription_plan = pmpro_getOption( 'square_subscription_plan_id' );
-		if ( ! $subscription_plan && PMProGateway_Square::pmpro_is_square_ready() ) {
+		$environment = pmpro_getOption( 'gateway_environment' );
+		$subscription_plan_id = pmpro_getOption( 'square_' . $environment . '_subscription_plan_id' );
 
-			PMProGateway_Square::pmpro_square_setup();
-
-			$subscription_plan_data = new \Square\Models\CatalogSubscriptionPlan( 'Paid Memberships Pro' );
-			$subscription_plan_data->setAllItems( false );
-
-			$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN', '#paid-memberships-pro' );
-			$object->setSubscriptionPlanData( $subscription_plan_data );
-
-			$body = new \Square\Models\UpsertCatalogObjectRequest( 'paid-memberships-pro', $object );
-
-			$api_response = PMProGateway_Square::$client->getCatalogApi()->upsertCatalogObject( $body );
-
-			if ( $api_response->isSuccess() ) {
-				$catalog_object = $api_response->getResult()->getCatalogObject();
-				pmpro_setOption( 'square_subscription_plan_id', $catalog_object->getId() );
-				return array( 'success' => true, 'plan' => $catalog_object->getId() );
-			} else {
-				return array( 'error' => $api_response->getErrors() );
-			}
+		if ( empty( $subscription_plan_id ) && $this->is_ready() ) {
+			$this->create_default_subscription_plan( $environment );
 		}
 
-		return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
+	}
+		*/
+
+	/**
+	 * Creates a subscription plan in Square
+	 **/
+	private function create_subscription_plan( $membership_level ) {
+
+		$this->log( 'Starting create_subscription_plan...' );
+
+		$subscription_plan_data = new \Square\Models\CatalogSubscriptionPlan( $membership_level->name );
+		$subscription_plan_data->setAllItems( false );
+
+		$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN', '#' . $membership_level->id );
+		$object->setSubscriptionPlanData( $subscription_plan_data );
+
+		$body = new \Square\Models\UpsertCatalogObjectRequest( 'paid-memberships-pro-' . $membership_level->id, $object );
+
+		$api_response = $this->client->getCatalogApi()->upsertCatalogObject( $body );
+
+		if ( $api_response->isSuccess() ) {
+			$catalog_object = $api_response->getResult()->getCatalogObject();
+			pmpro_setOption( 'square_subscription_plan_id_' . $this->gateway_environment . '_' . $membership_level->id, $catalog_object->getId() );
+			$this->log( 'Created new subscription plan: ' . $catalog_object->getId() );
+			return $catalog_object->getId();
+		} else {
+			$this->log( $api_response, 'FAILED TO CREATE SUBSCRIPTION PLAN' );
+			return false;
+		}
 
 	}
 
-	static function pmpro_square_refresh_locations_manual() {
+	private function create_subscription_phases( $membership_level, $order ) {
+		global $pmpro_currency;
+
+		$this->log( 'Starting create_subscription_phases...' );
+
+		$phases = array();
+
+		$subscription_delay  = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+
+		// Figure out cadence based on cycle period.
+		if ( $membership_level->cycle_period == "Day" ) {
+			$cycle_period = 'DAILY';
+			//$subscription_phase->setCadence( 'DAILY' );
+		} else if ( $membership_level->cycle_period == "Week" ) {
+			$cycle_period = 'WEEKLY';
+			//$subscription_phase->setCadence( 'WEEKLY' );
+		} else if ( $membership_level->cycle_period == "Month" ) {
+			$cycle_period = 'MONTHLY';
+			//$subscription_phase->setCadence( 'MONTHLY' );
+		} else if ( $membership_level->cycle_period == "Year" ) {
+			$cycle_period = 'ANNUAL';
+			//$subscription_phase->setCadence( 'ANNUAL' );
+		}
+
+		$ordinal = 0;
+		// Define the initial price.
+		if ( $order->subtotal ) {
+			$initial_payment = $order->subtotal;
+			// We will pass the tax % later so do not need to add it to the total here.
+			$initial_payment = $initial_payment * 100; // Square works in cents.
+
+			$initial_price_money = new \Square\Models\Money();
+			$initial_price_money->setAmount( $initial_payment );
+			$initial_price_money->setCurrency( $pmpro_currency );
+
+			$initial_pricing = new \Square\Models\SubscriptionPricing();
+			$initial_pricing->setType( 'STATIC' );
+			$initial_pricing->setPriceMoney( $initial_price_money );
+
+			// If we have subscription delay, use that many days for this initial payment phase.
+			if ( $subscription_delay ) {
+				$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
+				$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+				$initial_phase = new \Square\Models\SubscriptionPhase( 'DAILY' );
+				$initial_phase->setPeriods( $subscription_delay_days );
+			} else {
+				$initial_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+				$initial_phase->setPeriods( 1 );
+			}
+
+			$initial_phase->setOrdinal( $ordinal++ ); // The order in which the phase is to be processed.
+			$initial_phase->setPricing( $initial_pricing );
+
+			$phases[] = $initial_phase;
+		}
+
+		// Add the trial if set and we do not have a subscription delay.
+		if ( empty( $subscription_delay ) && $membership_level->trial_amount && $membership_level->trial_limit ) {
+			$trial_payment = $membership_level->trial_amount;
+			// We will pass the tax % later so do not need to add it to the total here.
+			$trial_payment = $trial_payment * 100; // Square works in cents.
+
+			$trial_price_money = new \Square\Models\Money();
+			$trial_price_money->setAmount( $trial_payment );
+			$trial_price_money->setCurrency( $pmpro_currency );
+
+			$trial_pricing = new \Square\Models\SubscriptionPricing();
+			$trial_pricing->setType( 'STATIC' );
+			$trial_pricing->setPriceMoney( $trial_price_money );
+
+			$trial_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+			$trial_phase->setOrdinal( $ordinal++ ); // The order in which the phase is to be processed.
+			$trial_phase->setPricing( $trial_pricing );
+			$trial_phase->setPeriods( intval( $membership_level->trial_limit ) );
+
+			$phases[] = $trial_phase;
+		}
+		
+		$recurring_payment = pmpro_round_price( (float) $membership_level->billing_amount );
+		// We will pass the tax % later so do not need to add it to the total here.
+		$recurring_payment = $recurring_payment * 100; // Square works in cents.
+
+		$recurring_price_money = new \Square\Models\Money();
+		$recurring_price_money->setAmount( $recurring_payment );
+		$recurring_price_money->setCurrency( $pmpro_currency );
+
+		$recurring_pricing = new \Square\Models\SubscriptionPricing();
+		$recurring_pricing->setType( 'STATIC' );
+		$recurring_pricing->setPriceMoney( $recurring_price_money );
+		
+		$subscription_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+		$subscription_phase->setOrdinal( $ordinal++ ); // The order in which the phase is to be processed.
+		$subscription_phase->setPricing( $recurring_pricing );
+
+		if ( ! empty( $membership_level->billing_limit ) ) {
+			$subscription_phase->setPeriods( absint( $billing_limit ) );
+		}
+
+		$phases[] = $subscription_phase;
+
+		$this->log( $phases, 'Phases' );
+
+		return $phases;
+
+	}
+
+	private function create_subscription_plan_variation( $subscription_plan_id, $membership_level, $order ) {
+		global $pmpro_currency;
+
+		$this->log( 'Starting create_subscription_plan_variation...' );
+
+		$phases = $this->create_subscription_phases( $membership_level, $order );
+
+		$subscription_plan_variation_data = new \Square\Models\CatalogSubscriptionPlanVariation( $membership_level->name, $phases );
+		$subscription_plan_variation_data->setSubscriptionPlanId( $subscription_plan_id );
+		$subscription_plan_variation_data->setName( $membership_level->name );
+
+		$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN_VARIATION', '#1' );
+		$object->setSubscriptionPlanVariationData( $subscription_plan_variation_data );
+
+		// Creating a new plan variation.
+		// Ideally we don't create a new one every time but doing this for now.
+		$body = new \Square\Models\UpsertCatalogObjectRequest( $this->get_idempotency_key(), $object );
+
+		$api_response = $this->client->getCatalogApi()->upsertCatalogObject( $body );
+
+		if ( $api_response->isSuccess() ) {
+			$catalog_object = $api_response->getResult()->getCatalogObject();
+			$subscription_plan_variation_id = $catalog_object->getId();
+			$this->log( 'Created new subscription plan variation: ' . $subscription_plan_variation_id );
+
+			// Get existing plan variations and add this new one to it.
+			$existing_plan_variations = get_option( 'pmpro_square_subscription_plan_variations_' . $this->gateway_environment . '_' . $membership_level->id );
+			if ( empty( $existing_plan_variations ) ) {
+				$existing_plan_variations = array();
+			}
+			$existing_plan_variations[ $subscription_plan_variation_id ] = (array) $membership_level;
+			update_option( 'pmpro_square_subscription_plan_variations_' . $this->gateway_environment . '_' . $membership_level->id, $existing_plan_variations );
+			return $subscription_plan_variation_id;
+		} 
+
+		$this->log( 'Failed to create subscription plan variation via API' );
+
+		return false;
+
+	}
+
+	public function refresh_locations_manual() {
 
 		if ( empty( $_GET['pmpro_square_refresh_locations'] ) ) {
 			return false;
@@ -252,7 +426,7 @@ class PMProGateway_Square extends PMProGateway {
 		}
 
 		$environment = pmpro_getParam( 'pmpro_square_refresh_locations', 'GET' );
-		$result = PMProGateway_Square::pmpro_square_refresh_locations( $environment );
+		$result = $this->refresh_locations( $environment );
 		if ( ! empty( $result['success'] ) ) {
 			?>
 			<div class="updated notice">
@@ -268,23 +442,22 @@ class PMProGateway_Square extends PMProGateway {
 		}
 	}
 
-	static function pmpro_square_refresh_locations_auto() {
+	public function refresh_locations_auto() {
 
-		$environment = pmpro_getOption( 'gateway_environment' );
-		$existing_locations = pmpro_getOption( 'square_locations_' . $environment );
+		$existing_locations = pmpro_getOption( 'square_locations_' . $this->gateway_environment );
 
-		if ( empty( $existing_locations ) && PMProGateway_Square::pmpro_is_square_ready() ) {
-			PMProGateway_Square::pmpro_square_refresh_locations( $environment );
+		if ( empty( $existing_locations ) && $this->is_ready() ) {
+			$this->refresh_locations( $environment );
 		}
 
 	}
 
-	static function pmpro_square_refresh_locations( $environment ) {
+	private function refresh_locations( $environment ) {
 
-		if ( PMProGateway_Square::pmpro_is_square_ready() ) {
-			_log( 'refreshing locations' );
-			PMProGateway_Square::pmpro_square_setup();
-			$api_response = PMProGateway_Square::$client->getLocationsApi()->listLocations();
+		if ( $this->is_ready() ) {
+			$this->log( 'refreshing locations' );
+			$this->setup();
+			$api_response = $this->client->getLocationsApi()->listLocations();
 			if ( $api_response->isSuccess() ) {
 				$api_locations = $api_response->getResult()->getLocations();
 				$locations = array();
@@ -302,13 +475,13 @@ class PMProGateway_Square extends PMProGateway {
 		
 	}
 
-	static function pmpro_square_get_webhook_url() {
+	private function get_webhook_url() {
 		$url = trailingslashit( get_bloginfo( 'url' ) );
 		$url = add_query_arg( 'pmpro_square_webhook', 1, $url );
 		return $url;
 	}
 
-	static function pmpro_square_create_webhooks_manual() {
+	public function create_webhooks_manual() {
 
 		if ( empty( $_GET['pmpro_square_webhooks'] ) ) {
 			return false;
@@ -319,7 +492,7 @@ class PMProGateway_Square extends PMProGateway {
 		}
 
 		$environment = pmpro_getParam( 'pmpro_square_webhooks', 'GET' );
-		$result = PMProGateway_Square::pmpro_square_create_webhooks( $environment );
+		$result = $this->create_webhooks( $environment, true );
 		if ( ! empty( $result['success'] ) ) {
 			?>
 			<div class="updated notice">
@@ -329,19 +502,18 @@ class PMProGateway_Square extends PMProGateway {
 		} else {
 			?>
 			<div class="error notice">
-				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
+				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php esc_html_e( $result['error'] ); ?></p>
 			</div>
 			<?php	
 		}
 	}
 
-	static function pmpro_square_create_webhooks_auto() {
+	public function create_webhooks_auto() {
 
-		$environment = pmpro_getOption( 'gateway_environment' );
-		$existing_webhooks = pmpro_getOption( 'square_webhook_' . $environment );
+		$existing_webhooks = pmpro_getOption( 'square_webhook_' . $this->gateway_environment );
 
-		if ( empty( $existing_webhooks ) && PMProGateway_Square::pmpro_is_square_ready() ) {
-			PMProGateway_Square::pmpro_square_create_webhooks( $environment );
+		if ( empty( $existing_webhooks ) && $this->is_ready() ) {
+			$this->create_webhooks( $environment );
 		}
 
 	}
@@ -351,17 +523,16 @@ class PMProGateway_Square extends PMProGateway {
 	 * Uses Personal Access Token so webhooks can be associated with customer app and not PMPro app
 	 * This requires a separate cURL request using the personal access token instead
 	 */
-	static function pmpro_square_create_webhooks( $environment ) {
+	private function create_webhooks( $environment, $force = false ) {
 
 		$webhooks = pmpro_getOption( 'square_webhook_' . $environment );
-		if ( ! $webhooks && PMProGateway_Square::pmpro_is_square_ready() ) {
+		if ( ( ! $webhooks || $force ) && $this->is_ready() ) {
 
-			PMProGateway_Square::pmpro_square_setup();
+			$this->setup();
 
-			_log( 'Creating webhooks...' );
+			$this->log( 'Creating webhooks in ' . $environment . '...' );
 
-			//$webhook_url = 'https://websitetestarea.com/?pmpro_square_webhook';
-			$webhook_url = PMProGateway_Square::pmpro_square_get_webhook_url();
+			$webhook_url = $this->get_webhook_url();
 
 			$event_types = array(
 				'order.created',
@@ -372,10 +543,11 @@ class PMProGateway_Square extends PMProGateway {
 				'refund.updated',
 				'subscription.created',
 				'subscription.updated',
+				'invoice.payment_made',
 			);
 		
 			$data = array(
-				'idempotency_key' => PMProGateway_Square::pmpro_square_get_idempotency_key(),
+				'idempotency_key' => $this->get_idempotency_key(),
 				'subscription' => array(
 					'name' => 'PMPro',
 					'notification_url' => $webhook_url,
@@ -384,30 +556,29 @@ class PMProGateway_Square extends PMProGateway {
 				'api_version' => '2024-12-18',
 			);
 		
-			$response = wp_remote_post( PMProGateway_Square::$base_url . '/v2/webhooks/subscriptions', array(
+			$response = wp_remote_post( $this->base_url . '/v2/webhooks/subscriptions', array(
 				'method'    => 'POST',
 				'body'      => json_encode( $data ),
 				'headers'   => array(
 					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . PMProGateway_Square::$personal_access_token,
+					'Authorization' => 'Bearer ' . $this->personal_access_token,
 				),
 			) );
 					
 			// Handle the response from Square
 			if ( is_wp_error( $response ) ) {
-				_log( $response );
 				$error_message = $response->get_error_message();
-				_log( "Error creating Square webhook subscription: $error_message" );
+				$this->log( "Error creating Square webhook subscription: $error_message" );
 				return array( 'error' => $error_message );
 			} else {
 				// Log the response for debugging
 				$response_body = json_decode( wp_remote_retrieve_body( $response ), true );
 				if ( ! empty( $response_body['subscription'] ) ) {
-					_log( $response_body, "Square webhook subscription created successfully" );
+					$this->log( $response_body, "Square webhook subscription created successfully" );
 					update_option( 'pmpro_square_webhook_' . $environment, $response_body['subscription'] );
 					return array( 'success' => true );
 				} else {
-					var_dump( $response_body );
+					$this->log( $response_body );
 					return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
 				}
 			}
@@ -423,7 +594,7 @@ class PMProGateway_Square extends PMProGateway {
 	 *
 	 * @since 1.8
 	 */
-	static function pmpro_payment_option_fields( $values, $gateway ) {
+	public function pmpro_payment_option_fields( $values, $gateway ) {
 	?>
 	<tr class="pmpro_settings_divider gateway gateway_square" <?php if( $gateway != "square" ) { ?>style="display: none;"<?php } ?> >
 		<td colspan="2">
@@ -439,6 +610,15 @@ class PMProGateway_Square extends PMProGateway {
 
 	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
 		<th scope="row" valign="top">
+			<label for="square_sandbox_application_id"><?php esc_html_e( 'Application ID', 'pmpro-square' ); ?>:</label>
+		</th>
+		<td>
+			<input type="text" id="square_sandbox_application_id" name="square_sandbox_application_id" size="60" value="<?php echo esc_attr( $values['square_sandbox_application_id'] ); ?>" />
+			<br /><small><?php esc_html_e( 'Enter the Application ID from Square', 'pmpro-square' );?></small>
+		</td>
+	</tr>
+	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
+		<th scope="row" valign="top">
 			<label for="square_sandbox_personal_access_token"><?php esc_html_e( 'Sandbox Access Token', 'pmpro-square' ); ?>:</label>
 		</th>
 		<td>
@@ -448,18 +628,39 @@ class PMProGateway_Square extends PMProGateway {
 	</tr>
 
 	<?php if ( ! empty( $values['square_sandbox_personal_access_token'] ) ) { ?>
+		<!--
 		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
 			<th scope="row">
 				<label><?php esc_html_e( 'Subscriptions Status', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
-				<?php if ( ! pmpro_getOption( 'square_subscription_plan_id' ) ) { ?>
+				<?php if ( ! pmpro_getOption( 'square_sandbox_subscription_plan_id' ) ) { ?>
 					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=sandbox' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
 				<?php } else { ?>
 					<div class="notice notice-success inline">
-						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?></p>
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_sandbox_subscription_plan_id' ); ?></p>
 					</div>
 				<?php } ?>
+			</td>
+		</tr>
+				-->
+		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
+			<th scope="row" valign="top">
+				<label for="square_sandbox_location_id"><?php esc_html_e( 'Sandbox Location', 'pmpro-square' ); ?>:</label>
+			</th>
+			<td>
+				<select id="square_sandbox_location_id" name="square_sandbox_location_id">
+					<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
+					<?php
+					$locations = get_option( 'pmpro_square_locations_sandbox' );
+					if ( ! empty( $locations ) ) {
+						foreach ( $locations as $id => $name ) {
+							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_sandbox_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
+						}
+					}
+					?>
+				</select>
+				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
 			</td>
 		</tr>
 		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
@@ -471,180 +672,117 @@ class PMProGateway_Square extends PMProGateway {
 				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
 				if ( $webhook ) {
 					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
+					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
 					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
 				?>
 			</td>
 		</tr>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_location_id"><?php esc_html_e( 'Sandbox Location', 'pmpro-square' ); ?>:</label>
+	<?php } ?>
+
+	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
+		<th scope="row" valign="top">
+			<label for="square_live_application_id"><?php esc_html_e( 'Application ID', 'pmpro-square' ); ?>:</label>
+		</th>
+		<td>
+			<input type="text" id="square_live_application_id" name="square_live_application_id" size="60" value="<?php echo esc_attr( $values['square_live_application_id'] ); ?>" />
+			<br /><small><?php esc_html_e( 'Enter the Application ID from Square', 'pmpro-square' );?></small>
+		</td>
+	</tr>
+	<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
+		<th scope="row" valign="top">
+			<label for="square_live_personal_access_token"><?php esc_html_e( 'Live Access Token', 'pmpro-square' ); ?>:</label>
+		</th>
+		<td>
+			<input type="text" id="square_live_personal_access_token" name="square_live_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_live_personal_access_token'] ); ?>" />
+			<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
+		</td>
+	</tr>
+
+	<?php if ( ! empty( $values['square_live_personal_access_token'] ) ) { ?>
+		<!--
+		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
+			<th scope="row">
+				<label><?php esc_html_e( 'Subscriptions Status', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
-				<select id="square_sandbox_location_id" name="square_sandbox_location_id">
+				<?php if ( ! pmpro_getOption( 'square_live_subscription_plan_id' ) ) { ?>
+					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=live' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
+				<?php } else { ?>
+					<div class="notice notice-success inline">
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_live_subscription_plan_id' ); ?></p>
+					</div>
+				<?php } ?>
+			</td>
+		</tr>
+				-->
+		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
+			<th scope="row" valign="top">
+				<label for="square_live_location_id"><?php esc_html_e( 'Live Location', 'pmpro-square' ); ?>:</label>
+			</th>
+			<td>
+				<select id="square_live_location_id" name="square_live_location_id">
 					<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
 					<?php
-					$locations = get_option( 'pmpro_square_locations_sandbox' );
+					$locations = get_option( 'pmpro_square_locations_live' );
 					if ( ! empty( $locations ) ) {
 						foreach ( $locations as $id => $name ) {
-							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_sandbox_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
+							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_live_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
 						}
 					}
 					?>
 				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
+				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
 			</td>
 		</tr>
-	<?php } ?>
-
-	<!--
-	<?php 
-	$sandbox_access_token = get_option( 'pmpro_square_sandbox_access_token' );
-	if ( empty( $sandbox_access_token ) ) { ?>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
+		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
 			<th scope="row" valign="top">
-				<label for="square_sandbox_connect"><?php esc_html_e( 'Sandbox Square Connect', 'pmpro-square' ); ?>:</label>
+				<label for="square_live_webhooks"><?php esc_html_e( 'Live Webhooks', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
-				<a href="<?php echo admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_oauth_connect=sandbox' ); ?>" class="button"><?php esc_html_e( 'Connect to Square', 'pmpro-square' );?></a>
-			</td>
-		</tr>
-	<?php } else { ?>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_connect"><?php esc_html_e( 'Sandbox Square Connect', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<a href="<?php echo admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_oauth_disconnect=sandbox' ); ?>" class="button"><?php esc_html_e( 'Disconnect from Square', 'pmpro-square' );?></a>
-			</td>
-		</tr>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_personal_access_token"><?php esc_html_e( 'Sandbox Access Token', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<input type="text" id="square_sandbox_access_token" name="square_sandbox_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_sandbox_personal_access_token'] ); ?>" />
-				<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
-			</td>
-		</tr>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_webhooks"><?php esc_html_e( 'Sandbox Webhooks', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<?php
-				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
+			<?php
+				$webhook = get_option( 'pmpro_square_webhook_live' );
 				if ( $webhook ) {
-					echo join( ', ', $webhook['event_types'] );
+					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
+					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
+					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
 				?>
 			</td>
 		</tr>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_location_id"><?php esc_html_e( 'Sandbox Location', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<select id="square_sandbox_location_id" name="square_sandbox_location_id">
-					<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
-					<?php
-					$locations = get_option( 'pmpro_square_locations_sandbox' );
-					if ( ! empty( $locations ) ) {
-						foreach ( $locations as $id => $name ) {
-							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_sandbox_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
-						}
-					}
-					?>
-				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
-			</td>
-		</tr>
 	<?php } ?>
-				-->
-
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_live_personal_access_token"><?php esc_html_e( 'Live Access Token', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<input type="text" id="square_live_personal_access_token" name="square_live_access_token" size="60" value="<?php echo esc_attr( $values['square_live_personal_access_token'] ); ?>" />
-				<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
-			</td>
-		</tr>
-
-		<?php if ( ! empty( $values['square_live_personal_access_token'] ) ) { ?>
-			<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-				<th scope="row" valign="top">
-					<label for="square_live_webhooks"><?php esc_html_e( 'Sandbox Webhooks', 'pmpro-square' ); ?>:</label>
-				</th>
-				<td>
-					<?php
-					$webhook = get_option( 'pmpro_square_webhook_live' );
-					if ( $webhook ) {
-						echo join( ', ', $webhook['event_types'] );
-					} else {
-						echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
-					}
-					?>
-				</td>
-			</tr>
-			<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-				<th scope="row" valign="top">
-					<label for="square_live_location_id"><?php esc_html_e( 'Live Location', 'pmpro-square' ); ?>:</label>
-				</th>
-				<td>
-					<select id="square_live_location_id" name="square_live_location_id">
-						<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
-						<?php
-						$locations = get_option( 'pmpro_square_locations_live' );
-						if ( ! empty( $locations ) ) {
-							foreach ( $locations as $id => $name ) {
-								echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_live_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
-							}
-						}
-						?>
-					</select>
-					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
-				</td>
-			</tr>
-		<?php } ?>
-
-	<!--
-	<?php 
-	$live_access_token = get_option( 'pmpro_square_live_access_token' );
-	if ( empty( $live_access_token ) ) { ?>	
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_connect"><?php esc_html_e( 'Live Square Connect', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<a href="<?php echo admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_oauth_connect=live' ); ?>" class="button"><?php esc_html_e( 'Connect to Square', 'pmpro-square' );?></a>
-			</td>
-		</tr>
-	<?php } else { ?>
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_live_connect"><?php esc_html_e( 'Live Square Connect', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<a href="<?php echo admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_oauth_disconnect=live' ); ?>" class="button"><?php esc_html_e( 'Disconnect from Square', 'pmpro-square' );?></a>
-			</td>
-		</tr>
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_live_personal_access_token"><?php esc_html_e( 'Live Access Token', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<input type="text" id="square_live_personal_access_token" name="square_live_access_token" size="60" value="<?php echo esc_attr( $values['square_live_personal_access_token'] ); ?>" />
-				<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
-			</td>
-		</tr>
-	<?php } ?>
-				-->
 	
+	<tr class="pmpro_settings_divider gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
+		<td colspan="2">
+			<hr />
+			<h2><?php esc_html_e( 'Other Square Settings', 'paid-memberships-pro' ); ?></h2>
+		</td>
+	</tr>
+	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
+		<th scope="row" valign="top">
+			<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'paid-memberships-pro' ); ?></label>
+		</th>
+		<td>
+			<select id="square_billingaddress" name="square_billingaddress">
+				<option value="0"
+						<?php if ( empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'No', 'paid-memberships-pro' ); ?></option>
+				<option value="1"
+						<?php if ( ! empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'Yes', 'paid-memberships-pro' ); ?></option>
+			</select>
+			<p class="description"><?php echo wp_kses_post( __( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'paid-memberships-pro' ) ); ?></p>
+		</td>
+	</tr>
+	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
+		<th scope="row" valign="top">
+			<label for="square_log"><?php esc_html_e( 'Logging', 'paid-memberships-pro' ); ?></label>
+		</th>
+		<td>
+			<input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?>
+		</td>
+	</tr>
+
 	<script>
 		/*
 		jQuery( document ).ready( function($) {
@@ -665,11 +803,40 @@ class PMProGateway_Square extends PMProGateway {
 	<?php
 	}
 
+	public function enqueue_scripts() {
+		global $gateway, $pmpro_level, $current_user, $pmpro_requirebilling, $pmpro_pages, $pmpro_currency;
+
+		if ( ! pmpro_is_checkout() ) {
+			return;
+		}
+
+		$initial_payment = floatval( $pmpro_level->initial_payment );
+		
+		if ( $this->gateway_environment == 'live' ) {
+			wp_enqueue_script( 'pmpro-square', 'https://web.squarecdn.com/v1/square.js' );
+		} else {
+			wp_enqueue_script( 'pmpro-square', 'https://sandbox.web.squarecdn.com/v1/square.js' );
+		}
+		wp_enqueue_script( 'pmpro-square-processing', PMPRO_SQUARE_URL . 'assets/js/square-processing.js', array( 'jquery' ), time(), true );
+		wp_localize_script(
+			'pmpro-square-processing',
+			'pmpro_square_vars',
+			array(
+				'application_id' => $this->application_id,
+				'location_id'    => $this->location_id,
+				'level_id'    => $pmpro_level->id,
+				'amount' => $initial_payment,
+				'currency' => $pmpro_currency,
+				'ajax_url'       => admin_url( 'admin-ajax.php' ),
+				'security'       => wp_create_nonce( 'pmpro_square' ),
+			)
+		);
+	}
+
 	/**
 	 * Check settings if billing address should be shown.
-	 * @since 1.8
 	 */
-	public static function pmpro_include_billing_address_fields( $include ) {
+	public function include_billing_address_fields( $include ) {
 		//check settings RE showing billing address
 		if ( ! get_option( "pmpro_square_billingaddress" ) ) {
 			$include = false;
@@ -681,7 +848,7 @@ class PMProGateway_Square extends PMProGateway {
 	/**
 	 * Remove required billing fields
 	 */
-	static function pmpro_required_billing_fields( $fields ) {
+	public function required_billing_fields( $fields ) {
 
 		$remove = array( 'CardType', 'AccountNumber', 'ExpirationMonth', 'ExpirationYear', 'CVV' );
 
@@ -697,52 +864,396 @@ class PMProGateway_Square extends PMProGateway {
 	}
 
 	/**
-	 * Swap in our submit buttons.
-	 *
-	 * @since 1.8
+	 * Use our own payment fields at checkout.
 	 */
-	static function pmpro_checkout_default_submit_button( $show ) {
+	public function include_payment_information_fields() {
 
-		global $gateway, $pmpro_requirebilling;
-
-		//show our submit buttons
+		//include ours
 		?>
-		<span id="pmpro_submit_span">
-			<input type="hidden" name="submit-checkout" value="1" />
-			<input type="submit" id="pmpro_btn-submit" class="<?php echo esc_attr( pmpro_get_element_class(  'pmpro_btn pmpro_btn-submit-checkout'  ) ); ?>" value="<?php if( $pmpro_requirebilling ) { esc_html_e( 'Check Out with Square', 'pmpro-square' ); } else { esc_html_e( 'Submit and Confirm', 'pmpro-square' ); } ?>" /></span>
+		<fieldset id="pmpro_payment_information_fields" class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_fieldset', 'pmpro_payment_information_fields' ) ); ?>"> SQUARE PAYMENT FIELDS
+			<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card' ) ); ?>">
+				<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card_content' ) ); ?>">
+					<legend class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_legend' ) ); ?>">
+						<h2 class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_heading pmpro_font-large' ) ); ?>"><?php esc_html_e('Payment Information', 'paid-memberships-pro' ); ?></h2>
+					</legend>
+					<div id="pmpro-square-card-container">
+						<div id="pmpro-square-card-fields"></div>
+						<div id="pmpro-square-status"></div>
+					</div>
+				</div> <!-- end pmpro_card_content -->
+			</div> <!-- end pmpro_card -->
+		</fieldset> <!-- end pmpro_payment_information_fields -->
 		<?php
 
-		//don't show the default
+		//don't include the default
 		return false;
 	}
 
+	/*
+	public private function init_order() {
+		global $gateway, $pmpro_level, $current_user, $pmpro_requirebilling, $pmpro_pages, $pmpro_currency;
+
+		$this->log( 'init order called' );
+
+		if ( empty( $_POST['security'] ) ) {
+			wp_send_json_error( array( 'reasons' => __( 'Failed to pass security', 'sunshine-photo-cart' ) ) );
+			return;
+		}
+
+		if ( empty( $_POST['source_id'] ) ) {
+			wp_send_json_error( array( 'reasons' => __( 'No source ID', 'sunshine-photo-cart' ) ) );
+			return;
+		}
+
+		$source_id = sanitize_text_field( $_POST['source_id'] );
+		$level_id = intval( $_POST['level_id'] );
+
+		// Create the customer in square
+		
+		$amount_money = new \Square\Models\Money();
+		$amount_money->setAmount( 1000 );
+		$amount_money->setCurrency( $pmpro_currency );
+
+		$body = new \Square\Models\CreatePaymentRequest( $source_id, $this->get_idempotency_key() );
+		$body->setAmountMoney( $amount_money );
+		$body->setLocationId( $this->location_id );
+
+		$api_response = $this->client->getPaymentsApi()->createPayment( $body );
+		$this->log( $api_response );
+
+		if ( $api_response->isSuccess() ) {
+			$payment = $api_response->getResult()->getPayment();
+			wp_send_json_success( array( 'payment_id' => $payment->getId() ) );
+		} else {
+			$errors = $api_response->getErrors();
+			wp_send_json_error( array( 'reasons' => $errors ) );
+		}
+
+	}
+	*/
+
+	private function get_subscription_plan_variation_id( $membership_level, $order ) {
+
+		// Keys to compare between membership level and existing subscription plans.
+		$membership_fields_to_compare = array(
+			'initial_payment',
+			'billing_amount',
+			'cycle_number',
+			'cycle_period',
+			'billing_limit',
+			'trial_amount',
+			'trial_limit',
+			'expiration_number',
+			'expiration_period',
+		);
+	
+		// Convert membership level to array for comparison.
+		$membership_level_data = (array) $membership_level;
+	
+		// Filter $membership_level_data to only include relevant keys and values.
+		$filtered_membership_data = array_intersect_key( $membership_level_data, array_flip( $membership_fields_to_compare ) );
+	
+		// Get existing subscription plan variations.
+		$existing_subscription_plan_variations = get_option( 'pmpro_square_subscription_plan_variations_' . $this->gateway_environment . '_' . $membership_level->id );
+	
+		// Check if there are existing variations.
+		if ( ! empty( $existing_subscription_plan_variations ) && is_array( $existing_subscription_plan_variations ) ) {
+			foreach ( $existing_subscription_plan_variations as $square_plan_variation_id => $plan_variation ) {
+	
+				// Filter the plan variation to include only the keys we're comparing.
+				$filtered_plan_variation = array_intersect_key( (array) $plan_variation, array_flip( $membership_fields_to_compare ) );
+	
+				// Compare both keys and values for equality.
+				if ( $filtered_membership_data === $filtered_plan_variation ) {
+					// If a match is found, return the plan variation ID.
+					$this->log( 'Returning existing plan variation ID: ' . $square_plan_variation_id );
+					return $square_plan_variation_id;
+				}
+			}
+		}
+
+		$this->log( 'No existing plan variations found' );
+	
+		return false;
+	}
+		
 	/**
 	 * Process checkout.
 	 */
-	function process( &$order ) {
-		
+	public function process( &$order ) {
+		global $pmpro_currency, $current_user;
+
 		if ( empty( $order->code ) ) {
 			$order->code = $order->getRandomCode();
 		}
+
+		$this->log( $order, '=============== NEW ORDER' );
 
 		// clean up a couple values
 		$order->payment_type = 'Square';
 		$order->CardType     = '';
 		$order->cardtype     = '';
 		$order->status = 'token';
-		$order->saveOrder();
 
-		pmpro_save_checkout_data_to_order( $order );
+		$this->log( $_POST, 'Square Processing' );
 
-		do_action( 'pmpro_before_send_to_square', $order->user_id, $order );
+		if ( empty( $_POST['square_payment_token'] ) ) {
+			return false;
+		}
 
-		$this->sendToSquare( $order );
+		$square_token = sanitize_text_field( $_POST['square_payment_token'] );
+
+		// Create the customer in Square if not currently set.
+		$square_customer_id = '';
+		if ( ! empty( $order->user_id ) ) {
+			$user_id = $order->user_id;
+		}
+		if ( empty( $user_id ) && ! empty( $current_user->ID ) ) {
+			$user_id = $current_user->ID;
+			$user = $current_user;
+		}
+		if ( ! empty( $user_id ) ) {
+			$user = empty( $user_id ) ? null : get_userdata( $user_id );
+
+			// Create new customer if does not exist.
+			$square_customer_id = get_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->gateway_environment, true );
+			if ( ! $square_customer_id ) {
+
+				$customer_request = new \Square\Models\CreateCustomerRequest();
+				$customer_request->setGivenName( $user->first_name );
+				$customer_request->setFamilyName( $user->last_name );
+				$customer_request->setEmailAddress( $user->user_email );
+				$customer_response = $this->client->getCustomersApi()->createCustomer( $customer_request );
+				if ( $customer_response->isSuccess()) {
+					$square_customer = $customer_response->getResult()->getCustomer();
+					$square_customer_id = $square_customer->getId();
+					$this->log( $square_customer, 'Customer created' );
+					update_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->gateway_environment, $square_customer_id );
+				} else {
+					$errors = $customer_response->getErrors();
+					$this->log( $errors, 'Customer NOT created' );
+					return false;
+				}
+
+			}
+
+		} else {
+			// No user account was available, bail.
+			return false;
+		}
+
+		$this->log( 'SQUARE CUSTOMER ID: ' . $square_customer_id );
+
+		// Setup billing address for API request if present.
+		if ( ! empty( $order->billing->name ) ) {
+			$address = new \Square\Models\Address();
+			$address->setAddressLine1( $order->billing->street );
+			$address->setAddressLine2( $order->billing->street2 );
+			$address->setLocality( $order->billing->city );
+			$address->setAdministrativeDistrictLevel1( $order->billing->state );
+			$address->setPostalCode( $order->billing->zip );
+			$address->setCountry( $order->billing->country );
+			// Pull from POST data as they are separate whereas order combines into single name.
+			if ( ! empty( $_POST['bfirstname'] ) ) {
+				$address->setFirstName( sanitize_text_field( $_POST['bfirstname'] ) );
+			}
+			if ( ! empty( $_POST['blastname'] ) ) {
+				$address->setLastName( sanitize_text_field( $_POST['blastname'] ) );
+			}
+		}
+
+		// One-time payments.
+		if ( ! pmpro_isLevelRecurring( $order->membership_level ) ) {
+
+			$this->log( $order, 'Process one time payment' );
+
+			$initial_subtotal       = $order->subtotal;
+			$initial_tax            = $order->getTaxForPrice( $initial_subtotal );
+			$initial_payment_amount = pmpro_round_price( (float) $initial_subtotal + (float) $initial_tax );
+			$initial_payment = $initial_payment * 100; // Square works in cents.
+
+			$amount_money = new \Square\Models\Money();
+			$amount_money->setAmount( $initial_payment_amount );
+			$amount_money->setCurrency( $pmpro_currency );
+
+			$body = new \Square\Models\CreatePaymentRequest( $square_token, $this->get_idempotency_key() );
+			$body->setAmountMoney( $amount_money );
+			$body->setCustomerId( $square_customer_id );
+			$body->setLocationId( $this->location_id );
+			$body->setReferenceId( $order->code );
+			$body->setAcceptPartialAuthorization( false );
+			$body->setBuyerEmailAddress( $user->user_email );
+
+			if ( ! empty( $address ) ) {
+				$body->setBillingAddress( $address );
+			}
+
+			$api_response = $this->client->getPaymentsApi()->createPayment( $body );
+
+			if ( $api_response->isSuccess() ) {
+				$result = $api_response->getResult();
+				$payment = $api_response->getResult()->getPayment();
+				$order->payment_transaction_id = $payment->getId();
+				$order->status = 'success';
+				$this->log( $result );
+				return true;
+			} else {
+				$this->log( $api_response, 'ERRORS' );
+				$errors = $api_response->getErrors();
+				foreach ( $errors as $error ) {
+					$order->error      .= __( 'Error processing payment', 'pmpro-square' ) . ': ' . $error->getCode();
+					$order->shorterror = $error->getCode();
+				}
+				return false;
+			}
+
+		} else {
+
+			// Otherwise, it is a subscription and need to set that up.
+			$this->log( 'Process subscription' );
+
+			/******************
+			Get the current Square Subscription Plan ID for this Membership Level.
+			******************/
+			$square_subscription_plan_id = pmpro_getOption( 'square_subscription_plan_id_' . $this->gateway_environment . '_' . $order->membership_level->id );
+			if ( empty( $square_subscription_plan_id ) ) {
+
+				$this->log( 'No Square Subscription Plan for this Membership Level' );
+
+				// Create a new subscription plan for the membership level since it does not yet exist.
+				$square_subscription_plan_id = $this->create_subscription_plan( $order->membership_level );
+				if ( ! $square_subscription_plan_id ) {
+					$this->log( 'Failed to create subscription plan in Square' );
+					wp_die( __( 'Failed to create subscription plan in Square', 'pmpro-square' ) );
+					exit;
+				}
+
+			}
+
+			/******************
+			Get the current Square Subscription Plan Variation ID for this Membership Level.
+			******************/
+			$square_subscription_plan_variation_id = $this->get_subscription_plan_variation_id( $order->membership_level, $order );
+			if ( ! $square_subscription_plan_variation_id ) {
+
+				$this->log( 'Since no subscription plan variation id found, try creating a new one...' );
+
+				// Create a new subscription plan variation for the membership level since it does not yet exist.
+				$square_subscription_plan_variation_id = $this->create_subscription_plan_variation( $square_subscription_plan_id, $order->membership_level, $order );
+				if ( ! $square_subscription_plan_variation_id ) {
+					$this->log( 'Failed at creating subscription plan variation in square' );
+					wp_die( __( 'Failed to create subscription plan variation in Square', 'pmpro-square' ) );
+					exit;
+				}
+
+			}
+
+			/******************
+			Add the square token to the card on file for this customer.
+			******************/
+			$card = new \Square\Models\Card();
+			$card->setCustomerId( $square_customer_id );
+			if ( ! empty( $address ) ) {
+				if ( ! empty( $order->billing->name ) ) {
+					$card->setCardholderName( $order->billing->name );
+				}
+				$card->setBillingAddress( $address );
+			}
+
+			$body = new \Square\Models\CreateCardRequest(
+				$this->get_idempotency_key(),
+				//$square_token,
+				'cnon:card-nonce-ok',
+				$card
+			);
+
+			$api_response = $this->client->getCardsApi()->createCard( $body );
+
+			if ( $api_response->isSuccess() ) {
+				$this->log( 'Card added to file of customer' );
+				$result = $api_response->getResult();
+				$card = $result->getCard();
+				$square_card_id = $card->getId();
+				// Update customer profile to save card info to meta.
+				$card_data = array(
+					'id' => $card->getId(),
+					'last4' => $card->getLast4(),
+					'exp_month' => $card->getExpMonth(),
+					'exp_year' => $card->getExpYear(),
+					'brand' => $card->getCardBrand(),
+				);
+				$cards = get_user_meta( $user_id, 'pmpro_square_cards', true );
+				if ( empty( $cards ) ) {
+					$cards = array();
+				}
+				$cards[] = $card_data;
+				update_user_meta( $user->ID, 'pmpro_square_cards', $cards );
+			} else {
+				$this->log( $body, 'card body' );
+				$this->log( $api_response, 'Card request' );
+				$errors = $api_response->getErrors();
+				foreach ( $errors as $error ) {
+					$order->error      .= __( 'Error processing payment', 'pmpro-square' ) . ': ' . $error->getCode();
+					$order->shorterror = $error->getCode();
+				}
+				return false; // Card MUST be saved on file, only way to set up subs in Square.
+			}
+
+			/******************
+			Put all the pieces together to make the final subscription request.
+			******************/
+			$body = new \Square\Models\CreateSubscriptionRequest( $this->location_id, $square_customer_id );
+			$body->setIdempotencyKey( $this->get_idempotency_key() );
+			$body->setPlanVariationId( $square_subscription_plan_variation_id );
+			$body->setCardId( $square_card_id );
+
+			// If we have any tax applied, assume it matches the one available tax rate and pass along.
+			if ( $order->tax > 0 ) {
+				$tax_rate = get_option( "pmpro_tax_rate" );
+				$this->log( 'Applying tax rate: ' . ( $tax_rate * 100 ) );
+				$body->setTaxPercentage( $tax_rate * 100 );
+			}
+
+			// If no initial payment, then there is a free trial and need to set a future start date.
+			// But need to take the subscription delay into consideration as well.
+			$subscription_delay  = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+			if ( empty( $order->subtotal ) && empty( $subscription_delay ) ) {
+				$start_date = date( 'Y-m-d', strtotime( '+1 ' . $order->membership_level->cycle_period ) );
+				$body->setStartDate( $start_date );
+				$this->log( 'Setting delayed start date for trial period: ' . $start_date );
+			} elseif ( empty( $order->subtotal ) && ! empty( $subscription_delay ) ) {
+				// No initial payment but there is a subscription delay, so lets set it based on that.
+				$subscription_start_date = pmpro_calculate_profile_start_date( $order, 'Y-m-d' );
+				$body->setStartDate( $subscription_start_date );
+				$this->log( 'Setting delayed start date for subscription delay and no initial payment: ' . $subscription_start_date );
+			}
+
+			$api_response = $this->client->getSubscriptionsApi()->createSubscription( $body );
+			if ( $api_response->isSuccess() ) {
+				$result = $api_response->getResult();
+				$subscription = $result->getSubscription();
+				$this->log( $subscription, 'SUBSCRIPTION SUCCESS!' );
+				$order->subscription_transaction_id = $subscription->getId();
+				// We need to set the payment ID in the webhook since the API does not return any data on invoices/payments yet.
+				// Square can take a few minutes to actually process the first payment.			
+				$order->status = 'success';
+				return true;
+			} else {
+				$this->log( $api_response, 'Subscription FAIL' );
+				$errors = $api_response->getErrors();
+				$order->error      .= __( 'Could not establish customer subscription in Square', 'pmpro-square' );
+				$order->shorterror = $errors[0]->getCode();
+				return false;
+			}
+				
+		}
+
+		// If we got here, something didn't go correctly.
+		return false;
+
 	}
 
-
-
-	/// Document this.
-	static function pmpro_square_get_idempotency_key( $key_input = '', $append_key_input = true ) {
+	private function get_idempotency_key( $key_input = '', $append_key_input = true ) {
 
 		if ( '' === $key_input ) {
 			$key_input = uniqid( '', false );
@@ -751,10 +1262,25 @@ class PMProGateway_Square extends PMProGateway {
 		return substr( apply_filters( 'pmpro_square_idempotency_key', sha1( get_option( 'siteurl' ) . $key_input ) . ( $append_key_input ? ':' . $key_input : '' ) ), -40 );
 	}
 
-	/// Document this.
-	static function pmpro_square_get_location_id() {
 
-		$environment = pmpro_getOption( 'gateway_environment' );
+	private function get_application_id() {
+
+		if ( empty( $this->gateway_environment ) ) {
+			$this->gateway_environment = pmpro_getOption( 'gateway_environment' );
+		}
+		$application_id = pmpro_getOption( 'square_' . $this->gateway_environment . '_application_id' );
+		if ( $application_id ) {
+			return $application_id;
+		}
+		return null;
+		
+	}
+
+	private function get_location_id( $environment = '' ) {
+
+		if ( empty( $environment ) ) {
+			$environment = pmpro_getOption( 'gateway_environment' );
+		}
 		$location_id = pmpro_getOption( 'square_' . $environment . '_location_id' );
 		if ( $location_id ) {
 			return $location_id;
@@ -769,240 +1295,46 @@ class PMProGateway_Square extends PMProGateway {
 		
 	}
 
-	function sendToSquare( &$order ) {
-		global $pmpro_currency, $current_user;
-		
-		PMProGateway_Square::pmpro_square_setup();
+	public function cancel_subscription( $subscription ) {
 
-		$payment_link = new \Square\Models\CreatePaymentLinkRequest();
-		$payment_link->setIdempotencyKey( PMProGateway_Square::pmpro_square_get_idempotency_key() );
+		$this->log( 'Attempting to cancel subscription...' );
+		$subscription_id = $subscription->get_subscription_transaction_id();
+		$api_response = $client->getSubscriptionsApi()->cancelSubscription( $subscription_id );
 
-		$square_order = new \Square\Models\Order( PMProGateway_Square::pmpro_square_get_location_id() );
-		$prepopulate = new \Square\Models\PrePopulatedData();
-
-		// Set the customer in Square.
-		if ( ! empty( $order->user_id ) ) {
-			$user_id = $order->user_id;
-		}
-		if ( empty( $user_id ) && ! empty( $current_user->ID ) ) {
-			$user_id = $current_user->ID;
-		}
-		if ( ! empty( $user_id ) ) {
-			$user = empty( $user_id ) ? null : get_userdata( $user_id );
-
-			// Create new customer if does not exist.
-			$square_customer_id = get_user_meta( $user_id, 'pmpro_square_customer_id', true );
-			if ( ! $square_customer_id ) {
-
-				$customer_request = new \Square\Models\CreateCustomerRequest();
-				$customer_request->setGivenName( $user->first_name );
-				$customer_request->setFamilyName( $user->last_name );
-				$customer_request->setEmailAddress( $user->user_email );
-				$customer_response = PMProGateway_Square::$client->getCustomersApi()->createCustomer( $customer_request );
-				if ( $customer_response->isSuccess()) {
-				    $square_customer = $customer_response->getResult()->getCustomer();
-					$square_customer_id = $square_customer->getId();
-					_log( $square_customer, 'Customer created' );
-					update_user_meta( $user_id, 'pmpro_square_customer_id', $square_customer_id );
-				} else {
-    				$errors = $customer_response->getErrors();
-					_log( $errors, 'Customer NOT created' );
-				}
-
-			}
-
-			if ( $square_customer_id ) {
-				$square_order->setCustomerId( $square_customer_id );
-			}
-
-			$prepopulate->setBuyerEmail( $user->user_email );
-
-		}
-
-		$checkout_options = new \Square\Models\CheckoutOptions();
-		$checkout_options->setAskForShippingAddress( false );
-		$checkout_options->setRedirectUrl( add_query_arg( 'pmpro_level', $order->membership_level->id, pmpro_url( 'confirmation' ) ) );
-
-		/*
-		echo '<pre>';
-		var_dump( $order );
-		echo '</pre>';
-		exit;
-		*/
-		
-		// Recurring membership
-		if ( pmpro_isLevelRecurring( $order->membership_level ) ) {
-
-			// Define the initial price.
-			$initial_payment = $order->subtotal;
-			$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
-			$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
-			$initial_payment = $initial_payment * 100; // Square works in cents.
-
-			$initial_price_money = new \Square\Models\Money();
-			$initial_price_money->setAmount( $initial_payment );
-			$initial_price_money->setCurrency( $pmpro_currency );
-			
-			$recurring_amount = pmpro_round_price( (float) $order->membership_level->billing_amount ) * 100; // Square works in cents.
-			$recurring_price_money = new \Square\Models\Money();
-			$recurring_price_money->setAmount( $recurring_amount );
-			$recurring_price_money->setCurrency( $pmpro_currency );
-
-			$subscription_plan_variation_id = pmpro_getOption( 'square_plan_variation_id_' . $order->membership_level->id );
-
-			if ( ! $subscription_plan_variation_idx ) {
-
-				// Get subscription plan ID. If not there, create it.
-				$subscription_plan = pmpro_getOption( 'square_subscription_plan_id' );
-				if ( empty( $subscription_plan ) ) {
-					$result = pmpro_square_create_default_subscription_plan();
-					if ( empty( $result['success'] ) ) {
-						echo 'No primary subscription plan could be made';
-						exit;
-					}
-					$subscription_plan = $result['plan'];
-				}
-			
-				$recurring_pricing = new \Square\Models\SubscriptionPricing();
-				$recurring_pricing->setType( 'STATIC' );
-				$recurring_pricing->setPriceMoney( $recurring_price_money );
-
-				//figure out days based on period
-				if ( $order->membership_level->cycle_period == "Day" ) {
-					$cadence = 'DAILY';
-					//$subscription_phase->setCadence( 'DAILY' );
-				} else if ( $order->membership_level->cycle_period == "Week" ) {
-					$cadence = 'WEEKLY';
-					//$subscription_phase->setCadence( 'WEEKLY' );
-				} else if ( $order->membership_level->cycle_period == "Month" ) {
-					$cadence = 'MONTHLY';
-					//$subscription_phase->setCadence( 'MONTHLY' );
-				} else if ( $order->membership_level->cycle_period == "Year" ) {
-					$cadence = 'ANNUAL';
-					//$subscription_phase->setCadence( 'ANNUAL' );
-				}
-				
-				$subscription_phase = new \Square\Models\SubscriptionPhase( $cadence );
-				$subscription_phase->setOrdinal( 0 ); // The order in which the phase is to be processed.
-				//$subscription_phase->setPricing( $pricing );
-				//$subscription_phase->setRecurringPriceMoney( $recurring_price_money );
-				$subscription_phase->setPricing( $recurring_pricing );
-
-				$number_of_rebills = '';
-				if ( ! empty( $order->membership_level->billing_limit ) ) {
-					$number_of_rebills = $order->membership_level->billing_limit;
-				}
-				if ( $number_of_rebills ) {
-					$subscription_phase->setPeriods( $number_of_rebills );
-				}
-	
-				$phases = array( $subscription_phase );
-
-				$subscription_plan_variation_data = new \Square\Models\CatalogSubscriptionPlanVariation( $order->membership_level->name, $phases );
-				$subscription_plan_variation_data->setSubscriptionPlanId( $subscription_plan );
-				
-				$object = new \Square\Models\CatalogObject( 'SUBSCRIPTION_PLAN_VARIATION', '#1' );
-				$object->setSubscriptionPlanVariationData( $subscription_plan_variation_data );
-
-				$body = new \Square\Models\UpsertCatalogObjectRequest( PMProGateway_Square::pmpro_square_get_idempotency_key(), $object );
-
-				$api_response = PMProGateway_Square::$client->getCatalogApi()->upsertCatalogObject( $body );
-
-				if ( $api_response->isSuccess() ) {
-					$catalog_object = $api_response->getResult()->getCatalogObject();
-					$subscription_plan_variation_id = $catalog_object->getId();
-					pmpro_setOption( 'square_plan_variation_id_' . $order->membership_level->id, $subscription_plan_variation_id );
-				} else {
-					$errors = $api_response->getErrors();
-					echo 'No subscription plan variation: ';
-					var_dump( $errors );
-					_log( $errors, 'No subscription plan variation' );
-					exit;
-				}
-
-			}
-
-			$checkout_options->setSubscriptionPlanId( $subscription_plan_variation_id );
-			
-			// The initial price is part of this quick pay part. The reecurring price is tied to the subscription phases.
-			$quick_pay = new \Square\Models\QuickPay(
-				$order->membership_level->name,
-				$initial_price_money,
-				PMProGateway_Square::pmpro_square_get_location_id(),
-			);
-			$payment_link->setQuickPay( $quick_pay );
-		
-		} else {	
-		
-			// If one-time payment, create basic payment link with a line item.
-
-			// Define the one-time price.
-			$initial_payment = $order->subtotal;
-			$initial_payment_tax = $order->getTaxForPrice( $initial_payment );
-			$initial_payment = pmpro_round_price( (float) $initial_payment + (float) $initial_payment_tax );
-			$initial_payment = $initial_payment * 100; // Square works in cents.
-
-			$price_money = new \Square\Models\Money();
-			$price_money->setAmount( $initial_payment );
-			$price_money->setCurrency( $pmpro_currency );
-
-			$order_line_item = new \Square\Models\OrderLineItem( '1' );
-			$order_line_item->setName( $order->membership_level->name );
-			$order_line_item->setBasePriceMoney( $price_money );
-			
-			$line_items = [
-				$order_line_item,
-			];
-			$square_order->setLineItems( $line_items );
-			$payment_link->setOrder( $square_order );
-
-		}
-	
-		$payment_link->setPrePopulatedData( $prepopulate );
-		$payment_link->setCheckoutOptions( $checkout_options );
-
-		$api_response = PMProGateway_Square::$client->getCheckoutApi()->createPaymentLink( $payment_link );
-			
 		if ( $api_response->isSuccess() ) {
-			$result = $api_response->getResult()->getPaymentLink();
-			$url = $result->getUrl();
-			update_pmpro_membership_order_meta( $order->id, 'square_order_id', $result->getOrderId() );
-			_log( 'Created Square order: ' . $result->getOrderId() );
-			wp_redirect( $url );
-			exit;
-		} else {
-			$errors = $api_response->getErrors();
-			_log( $errors );
-			var_dump( $errors );
-			exit;
+			$this->log( 'Subscription cancelled at Square via API: ' . $subscription_id );
+			return true;
 		}
+
+		$this->log( 'Subscription failed to cancel at Square via API: ' . $subscription_id );
+		return false;
 
 	}
 
-	static function webhook_listener() {
+	public function webhook_listener() {
 		global $wpdb;
 
 		if ( empty( $_GET['pmpro_square_webhook'] ) ) {
 			return;
 		}
 
-		_log( '========= WEBHOOK LISTENER' );
+		$this->log( '========= WEBHOOK LISTENER' );
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		$webhook_data = get_option( 'pmpro_square_webhook_' . $environment );
 		if ( empty( $webhook_data ) ) {
-			_log( 'No webhook settings data' );
+			$this->log( 'No webhook settings data' );
 			http_response_code( 403 );
 			exit;
 		}
 
 		$headers = apache_request_headers();
-		_log( $headers, 'HEADERS' );
+		//$this->log( $headers, 'HEADERS' );
 		$signature = $headers["X-Square-Hmacsha256-Signature"];
 		
 		// Signature completely empty (Throw a warning/bail) /// Temporary.
 		if ( empty( $signature ) ) {
-			_log( 'No signature' );
+			$this->log( 'No signature' );
 			http_response_code( 403 );
 			exit;
 		}
@@ -1013,43 +1345,76 @@ class PMProGateway_Square extends PMProGateway {
 			$body .= fread( $handle, 1024 );
 		}
 
-		if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signature, $webhook_data['signature_key'], PMProGateway_Square::pmpro_square_get_webhook_url() ) ) {
-			_log( "Error verifying webhook signature" );
+		if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signature, $webhook_data['signature_key'], $this->get_webhook_url() ) ) {
+			$this->log( $_POST, "Error verifying webhook signature" );
 			http_response_code( 403 );
 			exit;
 		}
 
 		$webhook = json_decode( $body, true );
+		$this->log( $webhook );
 
-		if ( $webhook['type'] === 'payment.updated' ) {
+		if ( $webhook['type'] === 'invoice.payment_made' ) {
 
-			_log( $webhook, 'SQUARE WEBHOOK RECEIVED ============================' );
+			$this->log( 'SQUARE WEBHOOK invoice.payment_made' );
 
-			$payment = $webhook['data']['object']['payment'];
+			$invoice = $webhook['data']['object']['invoice'];
 
-			$order_id = $wpdb->get_var( $wpdb->prepare( "SELECT pmpro_membership_order_id FROM $wpdb->pmpro_membership_ordermeta WHERE meta_key = 'square_order_id' AND meta_value = %s LIMIT 1", $payment['order_id'] ) );
+			$order_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $wpdb->pmpro_membership_orders WHERE subscription_transaction_id = %s", $invoice['subscription_id'] ) );
 			if ( empty( $order_id ) ) {
-				_log( 'Webhook could not find order with square order ID: ' . $payment['id'] );
+				$this->log( 'Webhook could not find order with square subscription ID: ' . $invoice['subscription_id'] );
 				exit();
 			}
 	
 			$order = new MemberOrder( $order_id );
 	
-			if ( $payment['status'] !== 'COMPLETED' ) {
+			if ( $invoice['status'] !== 'PAID' ) {
 				return;
 			}
 
-			$order->payment_transaction_id = $payment['id'];
+			$order->payment_transaction_id = $invoice['order_id'];
 			$order->saveOrder();
 
-			pmpro_pull_checkout_data_from_order( $order );
-			pmpro_complete_async_checkout( $order );
+			$this->log( '=========== ORDER SAVED!' );
 
-			_log( '=========== ORDER SAVED!' );
+			pmpro_pull_checkout_data_from_order( $order );
+			return pmpro_complete_async_checkout( $order );
+
 		}
 
 		http_response_code( 200 );
 		exit;
+
+	}
+
+	private function log( $message, $prefix = '' ) {
+
+		if ( get_option( "pmpro_square_log" ) !== 'yes' ) {
+			return;
+		}
+
+		$date = current_time( 'y-m-d H:i:s' );
+
+		$fp = fopen( $this->log_file, 'a' );
+
+		if ( $prefix ) {
+			if ( is_array( $prefix ) || is_object( $prefix ) ) {
+				$prefix = print_r( $prefix, true );
+			}
+			$prefix = $date . ': ' . $prefix . "\n";
+			fwrite( $fp, $prefix );
+		}
+
+		if ( is_array( $message ) || is_object( $message ) ) {
+			$message = print_r( $message, true );
+		}
+		$log_message = $date . ': ' . $message;
+		if ( is_user_logged_in() ) {
+			$log_message .= ' (User ID: ' . get_current_user_id() . ')';
+		}
+		$log_message .= "\n";
+		fwrite( $fp, $log_message );
+		fclose( $fp );
 
 	}
 
