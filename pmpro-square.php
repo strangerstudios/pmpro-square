@@ -1,14 +1,15 @@
 <?php
 /*
-Plugin Name: Paid Memberships Pro - Square Gateway
-Plugin URI: https://www.paidmembershipspro.com/add-ons/square
-Description: PMPro Gateway integration for Square
-Version: 0.1
-Author: Paid Memberships Pro
-Author URI: https://www.paidmembershipspro.com
-Text Domain: pmpro-square
-Domain Path: /languages
-*/
+ * Plugin Name: Paid Memberships Pro - Square Gateway
+ * Plugin URI: https://www.paidmembershipspro.com/add-ons/square
+ * Description: PMPro Gateway integration for Square
+ * Version: 0.1
+ * Author: Paid Memberships Pro
+ * Author URI: https://www.paidmembershipspro.com
+ * Text Domain: pmpro-square
+ * License: GPLv3 or later
+ * Domain Path: /languages
+ */
 
 define( "PMPRO_SQUARE_DIR", dirname( __FILE__ ) );
 
