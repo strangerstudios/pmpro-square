@@ -61,7 +61,7 @@ function pmpro_square_admin_notice() {
 		<div class="updated notice is-dismissible">
 			<p><?php printf( 
 				esc_html__( 'Thank you for activating the Paid Memberships Pro: Square Add On. %s to configure the Square Payment Gateway.', 'pmpro-square' ), 
-				'<a href="' . esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) . '">' . __( 'Visit the payment settings page', 'pmpro-square' ) . '</a>' 
+				'<a href="' . esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) . '">' . esc_html__( 'Visit the payment settings page', 'pmpro-square' ) . '</a>' 
 			); ?></p>
 		</div>
 		<?php
