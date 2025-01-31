@@ -632,10 +632,10 @@ class PMProGateway_Square extends PMProGateway {
 			</th>
 			<td>
 				<?php if ( ! pmpro_getOption( 'square_sandbox_subscription_plan_id' ) ) { ?>
-					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=sandbox' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
+					<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=sandbox' ), 'pmpro_square_create_default_subscription' ) ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
 				<?php } else { ?>
 					<div class="notice notice-success inline">
-						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_sandbox_subscription_plan_id' ); ?></p>
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo esc_html( pmpro_getOption( 'square_sandbox_subscription_plan_id' ) ); ?></p>
 					</div>
 				<?php } ?>
 			</td>
@@ -657,7 +657,7 @@ class PMProGateway_Square extends PMProGateway {
 					}
 					?>
 				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
+				<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ) ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
 			</td>
 		</tr>
 		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
@@ -668,10 +668,10 @@ class PMProGateway_Square extends PMProGateway {
 				<?php
 				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
 				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
+					echo '<div class="notice notice-success inline"><p>' . esc_html( join( ', ', $webhook['event_types'] ) ) . '</p></div>';
+					echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
+					echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
 				?>
 			</td>
@@ -705,10 +705,10 @@ class PMProGateway_Square extends PMProGateway {
 			</th>
 			<td>
 				<?php if ( ! pmpro_getOption( 'square_live_subscription_plan_id' ) ) { ?>
-					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=live' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
+					<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=live' ), 'pmpro_square_create_default_subscription' ) ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
 				<?php } else { ?>
 					<div class="notice notice-success inline">
-						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_live_subscription_plan_id' ); ?></p>
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo esc_html( pmpro_getOption( 'square_live_subscription_plan_id' ) ); ?></p>
 					</div>
 				<?php } ?>
 			</td>
@@ -730,7 +730,7 @@ class PMProGateway_Square extends PMProGateway {
 					}
 					?>
 				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
+				<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ) ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
 			</td>
 		</tr>
 		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
@@ -741,10 +741,10 @@ class PMProGateway_Square extends PMProGateway {
 			<?php
 				$webhook = get_option( 'pmpro_square_webhook_live' );
 				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
+					echo '<div class="notice notice-success inline"><p>' . esc_html( join( ', ', $webhook['event_types'] ) ) . '</p></div>';
+					echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
+					echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) ). '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
 				?>
 			</td>
@@ -768,7 +768,7 @@ class PMProGateway_Square extends PMProGateway {
 				<option value="1"
 						<?php if ( ! empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'Yes', 'paid-memberships-pro' ); ?></option>
 			</select>
-			<p class="description"><?php echo wp_kses_post( __( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'paid-memberships-pro' ) ); ?></p>
+			<p class="description"><?php esc_html_e( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'paid-memberships-pro' ); ?></p>
 		</td>
 	</tr>
 	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
@@ -776,7 +776,7 @@ class PMProGateway_Square extends PMProGateway {
 			<label for="square_log"><?php esc_html_e( 'Logging', 'paid-memberships-pro' ); ?></label>
 		</th>
 		<td>
-			<input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?>
+			<input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php esc_html_e( 'Enable logging of all Square events', 'pmpro-square' ); ?>
 		</td>
 	</tr>
 
@@ -1121,7 +1121,7 @@ class PMProGateway_Square extends PMProGateway {
 				$square_subscription_plan_id = $this->create_subscription_plan( $order->membership_level );
 				if ( ! $square_subscription_plan_id ) {
 					$this->log( 'Failed to create subscription plan in Square' );
-					wp_die( __( 'Failed to create subscription plan in Square', 'pmpro-square' ) );
+					wp_die( esc_html__( 'Failed to create subscription plan in Square', 'pmpro-square' ) );
 					exit;
 				}
 
@@ -1139,7 +1139,7 @@ class PMProGateway_Square extends PMProGateway {
 				$square_subscription_plan_variation_id = $this->create_subscription_plan_variation( $square_subscription_plan_id, $order->membership_level, $order );
 				if ( ! $square_subscription_plan_variation_id ) {
 					$this->log( 'Failed at creating subscription plan variation in square' );
-					wp_die( __( 'Failed to create subscription plan variation in Square', 'pmpro-square' ) );
+					wp_die( esc_html__( 'Failed to create subscription plan variation in Square', 'pmpro-square' ) );
 					exit;
 				}
 
@@ -1356,7 +1356,8 @@ class PMProGateway_Square extends PMProGateway {
 			$this->log( 'SQUARE WEBHOOK invoice.payment_made' );
 
 			$invoice = $webhook['data']['object']['invoice'];
-
+			 
+			// phpcs:ignore	
 			$order_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $wpdb->pmpro_membership_orders WHERE subscription_transaction_id = %s", $invoice['subscription_id'] ) );
 			if ( empty( $order_id ) ) {
 				$this->log( 'Webhook could not find order with square subscription ID: ' . $invoice['subscription_id'] );

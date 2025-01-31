@@ -59,7 +59,10 @@ function pmpro_square_admin_notice() {
 	if ( get_transient( 'pmpro-square-admin-notice' ) ) { 
 	?>
 		<div class="updated notice is-dismissible">
-			<p><?php printf( __( 'Thank you for activating the Paid Memberships Pro: Square Add On. <a href="%s">Visit the payment settings page</a> to configure the Square Payment Gateway.', 'pmpro-square' ), esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) ); ?></p>
+			<p><?php printf( 
+				esc_html__( 'Thank you for activating the Paid Memberships Pro: Square Add On. %s to configure the Square Payment Gateway.', 'pmpro-square' ), 
+				'<a href="' . esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) . '">' . __( 'Visit the payment settings page', 'pmpro-square' ) . '</a>' 
+			); ?></p>
 		</div>
 		<?php
 		// Delete transient, only display this notice once.
@@ -93,8 +96,8 @@ add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'pmpro_square_
 function pmpro_square_plugin_row_meta( $links, $file ) {
 	if ( strpos( $file, 'pmpro-square.php' ) !== false ) {
 		$new_links = array(
-			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/add-ons/square/' ) . '" title="' . esc_attr( __( 'View Documentation', 'pmpro-square' ) ) . '">' . __( 'Docs', 'pmpro-square' ) . '</a>',
-			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/support/' ) . '" title="' . esc_attr( __( 'Visit Customer Support Forum', 'pmpro-square' ) ) . '">' . __( 'Support', 'pmpro-square' ) . '</a>',
+			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/add-ons/square/' ) . '" title="' . esc_attr__( 'View Documentation', 'pmpro-square' ) . '">' . esc_html__( 'Docs', 'pmpro-square' ) . '</a>',
+			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/support/' ) . '" title="' . esc_attr__( 'Visit Customer Support Forum', 'pmpro-square' ) . '">' . esc_html__( 'Support', 'pmpro-square' ) . '</a>',
 		);
 		$links = array_merge( $links, $new_links );
 	}
