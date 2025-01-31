@@ -10,7 +10,8 @@ Text Domain: pmpro-square
 Domain Path: /languages
 */
 
-define( "PMPRO_SQUARE_DIR", dirname( __FILE__ ) );
+define( "PMPRO_SQUARE_DIR", plugin_dir_path( __FILE__ ) );
+define( "PMPRO_SQUARE_URL", plugin_dir_url( __FILE__ ) );
 
 /**
  * Loads rest of Square gateway if PMPro is active.
