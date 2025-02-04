@@ -392,7 +392,7 @@ class PMProGateway_Square extends PMProGateway {
 		} else {
 			?>
 			<div class="error notice">
-				<p><?php esc_html_e( 'Locations could not be refreshed', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
+				<p><?php esc_html_e( 'Locations could not be refreshed', 'pmpro-square' ); ?>: <?php echo esc_html( $result['error'] ); ?></p>
 			</div>
 			<?php	
 		}
@@ -458,7 +458,7 @@ class PMProGateway_Square extends PMProGateway {
 		} else {
 			?>
 			<div class="error notice">
-				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php esc_html_e( $result['error'] ); ?></p>
+				<p><?php esc_html_e( 'Webhooks could not be created', 'pmpro-square' ); ?>: <?php echo esc_html( $result['error'] ); ?></p>
 			</div>
 			<?php	
 		}
@@ -766,26 +766,26 @@ class PMProGateway_Square extends PMProGateway {
 	<tr class="pmpro_settings_divider gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
 		<td colspan="2">
 			<hr />
-			<h2><?php esc_html_e( 'Other Square Settings', 'paid-memberships-pro' ); ?></h2>
+			<h2><?php esc_html_e( 'Other Square Settings', 'pmpro-square' ); ?></h2>
 		</td>
 	</tr>
 	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
 		<th scope="row" valign="top">
-			<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'paid-memberships-pro' ); ?></label>
+			<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'pmpro-square' ); ?></label>
 		</th>
 		<td>
 			<select id="square_billingaddress" name="square_billingaddress">
 				<option value="0"
-						<?php if ( empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'No', 'paid-memberships-pro' ); ?></option>
+						<?php if ( empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'No', 'pmpro-square' ); ?></option>
 				<option value="1"
-						<?php if ( ! empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'Yes', 'paid-memberships-pro' ); ?></option>
+						<?php if ( ! empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'Yes', 'pmpro-square' ); ?></option>
 			</select>
-			<p class="description"><?php echo wp_kses_post( __( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'paid-memberships-pro' ) ); ?></p>
+			<p class="description"><?php echo wp_kses_post( __( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'pmpro-square' ) ); ?></p>
 		</td>
 	</tr>
 	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
 		<th scope="row" valign="top">
-			<label for="square_log"><?php esc_html_e( 'Logging', 'paid-memberships-pro' ); ?></label>
+			<label for="square_log"><?php esc_html_e( 'Logging', 'pmpro-square' ); ?></label>
 		</th>
 		<td>
 			<label><input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?></label>
@@ -883,7 +883,7 @@ class PMProGateway_Square extends PMProGateway {
 			<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card' ) ); ?>">
 				<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card_content' ) ); ?>">
 					<legend class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_legend' ) ); ?>">
-						<h2 class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_heading pmpro_font-large' ) ); ?>"><?php esc_html_e('Payment Information', 'paid-memberships-pro' ); ?></h2>
+						<h2 class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_heading pmpro_font-large' ) ); ?>"><?php esc_html_e('Payment Information', 'pmpro-square' ); ?></h2>
 					</legend>
 					<div id="pmpro-square-card-container">
 						<div id="pmpro-square-card-fields"></div>
