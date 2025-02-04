@@ -75,6 +75,8 @@ class PMProGateway_Square extends PMProGateway {
 
 			add_action( 'wp', array( $this, 'webhook_listener' ), 999 );
 
+			add_action( 'pmpro_square_check_webhooks_status', array( $this, 'check_webhooks' ) );
+
 			$wp_upload_dir  = wp_upload_dir();
 			$this->log_file = $wp_upload_dir['basedir'] . '/pmpro-square.log';
 	
@@ -152,14 +154,12 @@ class PMProGateway_Square extends PMProGateway {
 			$this->application_id = get_option( 'pmpro_square_live_application_id' );
 			$this->location_id = $this->get_location_id( 'live' );
 			$this->personal_access_token = get_option( 'pmpro_square_live_personal_access_token' );
-			//$this->subscription_plan_id = get_option( 'pmpro_square_live_subscription_plan_id' );
 		} else {
 			$this->gateway_environment = 'sandbox';
 			$this->base_url = 'https://connect.squareupsandbox.com';
 			$this->application_id = get_option( 'pmpro_square_sandbox_application_id' );
 			$this->location_id = $this->get_location_id( 'sandbox' );
 			$this->personal_access_token = get_option( 'pmpro_square_sandbox_personal_access_token' );
-			//$this->subscription_plan_id = get_option( 'pmpro_square_sandbox_subscription_plan_id' );
 		}
 		if ( empty( $this->personal_access_token ) ) {
 			return; // Don't proceed, we don't have the proper credentials.
@@ -195,48 +195,6 @@ class PMProGateway_Square extends PMProGateway {
 
 	}
 
-	/*
-	We do not need this anymore, we are creating one subscription plan per membership level instead.
-	private function create_default_subscription_plan_manual() {
-
-		if ( empty( $_GET['pmpro_square_create_default_subscription'] ) ) {
-			return false;
-		}
-
-		if ( ! empty( $_GET['_wpnonce'] ) && ! wp_verify_nonce( $_GET['_wpnonce'], 'pmpro_square_create_default_subscription' ) ) {
-			return false;
-		}
-
-		$environment = pmpro_getParam( 'pmpro_square_create_default_subscription', 'GET' );
-		$result = $this->create_default_subscription_plan( $environment );
-		if ( ! empty( $result['success'] ) ) {
-			?>
-			<div class="updated notice">
-				<p><?php esc_html_e( 'Subscriptions are now enabled', 'pmpro-square' ); ?></p>
-			</div>
-			<?php
-		} else {
-			?>
-			<div class="error notice">
-				<p><?php esc_html_e( 'Subscriptions could not be enabled', 'pmpro-square' ); ?>: <?php echo esc_html_e( $result['error'] ); ?></p>
-			</div>
-			<?php	
-		}
-
-	}
-
-	private function create_default_subscription_plan_auto() {
-
-		$environment = pmpro_getOption( 'gateway_environment' );
-		$subscription_plan_id = pmpro_getOption( 'square_' . $environment . '_subscription_plan_id' );
-
-		if ( empty( $subscription_plan_id ) && $this->is_ready() ) {
-			$this->create_default_subscription_plan( $environment );
-		}
-
-	}
-		*/
-
 	/**
 	 * Creates a subscription plan in Square
 	 **/
@@ -256,7 +214,7 @@ class PMProGateway_Square extends PMProGateway {
 
 		if ( $api_response->isSuccess() ) {
 			$catalog_object = $api_response->getResult()->getCatalogObject();
-			pmpro_setOption( 'square_subscription_plan_id_' . $this->gateway_environment . '_' . $membership_level->id, $catalog_object->getId() );
+			update_option( 'pmpro_square_subscription_plan_id_' . $this->gateway_environment . '_' . $membership_level->id, $catalog_object->getId() );
 			$this->log( 'Created new subscription plan: ' . $catalog_object->getId() );
 			return $catalog_object->getId();
 		} else {
@@ -442,7 +400,7 @@ class PMProGateway_Square extends PMProGateway {
 
 	public function refresh_locations_auto() {
 
-		$existing_locations = pmpro_getOption( 'square_locations_' . $this->gateway_environment );
+		$existing_locations = get_option( 'pmpro_square_locations_' . $this->gateway_environment );
 
 		if ( empty( $existing_locations ) && $this->is_ready() ) {
 			$this->refresh_locations( $this->gateway_environment );
@@ -453,7 +411,7 @@ class PMProGateway_Square extends PMProGateway {
 	private function refresh_locations( $environment ) {
 
 		if ( $this->is_ready() ) {
-			$this->log( 'refreshing locations' );
+			$this->log( 'Refreshing square locations in ' . $environment );
 			$this->setup();
 			$api_response = $this->client->getLocationsApi()->listLocations();
 			if ( $api_response->isSuccess() ) {
@@ -508,10 +466,66 @@ class PMProGateway_Square extends PMProGateway {
 
 	public function create_webhooks_auto() {
 
-		$existing_webhooks = pmpro_getOption( 'square_webhook_' . $this->gateway_environment );
-
-		if ( empty( $existing_webhooks ) && $this->is_ready() ) {
+		$existing_webhooks = get_option( 'pmpro_square_webhook_' . $this->gateway_environment );
+		if ( empty( $existing_webhooks ) ) {
 			$this->create_webhooks( $this->gateway_environment );
+		}
+
+	}
+
+	public function check_webhooks() {
+
+		$this->log( 'Checking webhooks via cron...' );
+		
+		if ( $this->is_ready() ) {
+
+			$existing_webhook = get_option( 'pmpro_square_webhook_' . $this->gateway_environment );
+			$this->log( $existing_webhook, 'Existing webhook' );
+
+			// If we do not have any existing webhooks saved in our settings, let's create some.
+			if ( empty( $existing_webhook ) ) {
+				$this->create_webhooks( $this->gateway_environment );
+				return;
+			}
+
+			$api_response = $this->client->getWebhookSubscriptionsApi()->listWebhookSubscriptions();
+		
+			if ( $api_response->isSuccess() ) {
+				$webhooks = $api_response->getResult()->getSubscriptions();
+				$this->log( $webhooks, 'Square webhooks via API' );
+
+				// If no webhooks in Square, create it now.
+				if ( empty( $webhooks ) ) {
+					$this->create_webhooks( $this->gateway_environment );
+					return;
+				}
+
+				// Log or process the webhooks status
+				foreach ( $webhooks as $webhook ) {
+					// See if the webhook ID from our saved settings matches this webhook.
+					if ( $webhook->getId() == $existing_webhook['id'] ) {
+						$this->log( 'Existing webhooks confirmed by ID' );
+						return;
+					}
+					// Compare if the notification URL is the same. If so, we have a webhook but not in settings for some reason so save to settings.
+					if ( $webhook->getNotificationUrl() == $existing_webhook['notification_url'] ) {
+						$this->log( 'Existing webhooks confirmed by notification URL' );
+						$webhook_data = (array) $webhook->jsonSerialize();
+						update_option( 'pmpro_square_webhook_' . $this->gateway_environment, $webhook_data );
+						return;
+					}
+				}
+
+				// We do not have a matching webhook, so let's create one
+				$this->create_webhooks( $this->gateway_environment );
+				return;
+
+			} else {
+				$errors = $api_response->getErrors();
+				// Log any errors that occur
+				$this->log( 'Error checking webhooks: ' . print_r($errors, true));
+			}
+
 		}
 
 	}
@@ -524,8 +538,6 @@ class PMProGateway_Square extends PMProGateway {
 	private function create_webhooks( $environment ) {
 
 		if ( $this->is_ready() ) {
-
-			$this->setup();
 
 			$this->log( 'Creating webhooks in ' . $environment . '...' );
 
@@ -576,11 +588,11 @@ class PMProGateway_Square extends PMProGateway {
 					return array( 'success' => true );
 				} else {
 					$this->log( $response_body );
-					return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
+					return array( 'error' => __( 'Unknown error creating webhooks', 'pmpro-square' ) );
 				}
 			}
 
-			return array( 'error' => __( 'Unknown error', 'pmpro-square' ) );
+			return array( 'error' => __( 'Unknown error creating webhooks', 'pmpro-square' ) );
 
 		}
 			
@@ -631,11 +643,11 @@ class PMProGateway_Square extends PMProGateway {
 				<label><?php esc_html_e( 'Subscriptions Status', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
-				<?php if ( ! pmpro_getOption( 'square_sandbox_subscription_plan_id' ) ) { ?>
+				<?php if ( ! get_option( 'pmpro_square_sandbox_subscription_plan_id' ) ) { ?>
 					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=sandbox' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
 				<?php } else { ?>
 					<div class="notice notice-success inline">
-						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_sandbox_subscription_plan_id' ); ?></p>
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo get_option( 'pmpro_square_sandbox_subscription_plan_id' ); ?></p>
 					</div>
 				<?php } ?>
 			</td>
@@ -658,6 +670,7 @@ class PMProGateway_Square extends PMProGateway {
 					?>
 				</select>
 				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
+				<br /><small><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' );?></small>
 			</td>
 		</tr>
 		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
@@ -669,7 +682,6 @@ class PMProGateway_Square extends PMProGateway {
 				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
 				if ( $webhook ) {
 					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
 					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
@@ -704,11 +716,11 @@ class PMProGateway_Square extends PMProGateway {
 				<label><?php esc_html_e( 'Subscriptions Status', 'pmpro-square' ); ?>:</label>
 			</th>
 			<td>
-				<?php if ( ! pmpro_getOption( 'square_live_subscription_plan_id' ) ) { ?>
+				<?php if ( ! get_option( 'pmpro_square_live_subscription_plan_id' ) ) { ?>
 					<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_create_default_subscription=live' ), 'pmpro_square_create_default_subscription' ); ?>" class="button"><?php esc_html_e( 'Subscription Setup', 'pmpro-square' );?></a>
 				<?php } else { ?>
 					<div class="notice notice-success inline">
-						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo pmpro_getOption( 'square_live_subscription_plan_id' ); ?></p>
+						<p><?php esc_html_e( 'Subscription capabilities enabled', 'pmpro-square' ); ?> - <?php echo get_option( 'pmpro_square_live_subscription_plan_id' ); ?></p>
 					</div>
 				<?php } ?>
 			</td>
@@ -720,7 +732,7 @@ class PMProGateway_Square extends PMProGateway {
 			</th>
 			<td>
 				<select id="square_live_location_id" name="square_live_location_id">
-					<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
+					<option value=""><?php esc_html_e( 'Default Location', 'pmpro-square' ); ?></option>
 					<?php
 					$locations = get_option( 'pmpro_square_locations_live' );
 					if ( ! empty( $locations ) ) {
@@ -731,6 +743,7 @@ class PMProGateway_Square extends PMProGateway {
 					?>
 				</select>
 				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
+				<br /><small><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' );?></small>
 			</td>
 		</tr>
 		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'live' ) { ?>style="display: none;"<?php } ?> >
@@ -742,7 +755,6 @@ class PMProGateway_Square extends PMProGateway {
 				$webhook = get_option( 'pmpro_square_webhook_live' );
 				if ( $webhook ) {
 					echo '<div class="notice notice-success inline"><p>' . join( ', ', $webhook['event_types'] ) . '</p></div>';
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Refresh webhooks', 'pmpro-square' ) . '</a>';
 				} else {
 					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
 				}
@@ -776,7 +788,7 @@ class PMProGateway_Square extends PMProGateway {
 			<label for="square_log"><?php esc_html_e( 'Logging', 'paid-memberships-pro' ); ?></label>
 		</th>
 		<td>
-			<input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?>
+			<label><input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?></label>
 		</td>
 	</tr>
 
@@ -1112,7 +1124,7 @@ class PMProGateway_Square extends PMProGateway {
 			/******************
 			Get the current Square Subscription Plan ID for this Membership Level.
 			******************/
-			$square_subscription_plan_id = pmpro_getOption( 'square_subscription_plan_id_' . $this->gateway_environment . '_' . $order->membership_level->id );
+			$square_subscription_plan_id = get_option( 'pmpro_square_subscription_plan_id_' . $this->gateway_environment . '_' . $order->membership_level->id );
 			if ( empty( $square_subscription_plan_id ) ) {
 
 				$this->log( 'No Square Subscription Plan for this Membership Level' );
@@ -1263,9 +1275,9 @@ class PMProGateway_Square extends PMProGateway {
 	private function get_application_id() {
 
 		if ( empty( $this->gateway_environment ) ) {
-			$this->gateway_environment = pmpro_getOption( 'gateway_environment' );
+			$this->gateway_environment = get_option( 'pmpro_gateway_environment' );
 		}
-		$application_id = pmpro_getOption( 'square_' . $this->gateway_environment . '_application_id' );
+		$application_id = get_option( 'pmpro_square_' . $this->gateway_environment . '_application_id' );
 		if ( $application_id ) {
 			return $application_id;
 		}
@@ -1276,9 +1288,9 @@ class PMProGateway_Square extends PMProGateway {
 	private function get_location_id( $environment = '' ) {
 
 		if ( empty( $environment ) ) {
-			$environment = pmpro_getOption( 'gateway_environment' );
+			$environment = get_option( 'pmpro_gateway_environment' );
 		}
-		$location_id = pmpro_getOption( 'square_' . $environment . '_location_id' );
+		$location_id = get_option( 'pmpro_square_' . $environment . '_location_id' );
 		if ( $location_id ) {
 			return $location_id;
 		} else {
