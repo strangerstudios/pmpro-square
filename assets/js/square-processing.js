@@ -113,7 +113,7 @@ document.addEventListener(
 				amount: pmpro_square_vars.amount,
 				billingContact: { },
 				currencyCode: pmpro_square_vars.currency,
-				intent: 'CHARGE',
+				intent: pmpro_square_vars.intent,
 			};
 			
 			const verificationResults = await payments.verifyBuyer(
