@@ -1081,7 +1081,7 @@ class PMProGateway_square extends PMProGateway {
 					$result = $api_response->getResult();
 					$customer = $result->getCustomer();
 					// If our customer IDs are different, let's save the found one to usermeta.
-					// This could happen if someone changed their Square App ID and the customer existing in the new one but meta was still saved as old one.
+					// This could happen if someone changed to a new Square account and the customer existing in the new one but meta was still saved as old one.
 					// Not at all likely, but ya never know - people be doing crazy things.
 					if ( $square_customer_id != $customer->getId() ) {
 						$square_customer_id = $customer->getId();
