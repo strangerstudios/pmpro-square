@@ -1009,6 +1009,28 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
+	 * Creates a customer in Square.
+	 */
+	public function create_customer( $user ) {
+		$customer_request = new \Square\Models\CreateCustomerRequest();
+		$customer_request->setGivenName( $user->first_name );
+		$customer_request->setFamilyName( $user->last_name );
+		$customer_request->setEmailAddress( $user->user_email );
+		$customer_response = $this->client->getCustomersApi()->createCustomer( $customer_request );
+		if ( $customer_response->isSuccess()) {
+			$square_customer = $customer_response->getResult()->getCustomer();
+			$square_customer_id = $square_customer->getId();
+			$this->log( 'Customer created in Square' );
+			update_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->get_environment(), $square_customer_id );
+			return $square_customer_id;
+		} else {
+			$errors = $customer_response->getErrors();
+			$this->log( $errors, 'Customer NOT created' );
+			return false;
+		}
+	}
+
+	/**
 	 * Process checkout.
 	 */
 	public function process( &$order ) {
@@ -1050,23 +1072,30 @@ class PMProGateway_square extends PMProGateway {
 			// Create new customer if does not exist.
 			$square_customer_id = get_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->get_environment(), true );
 			if ( ! $square_customer_id ) {
+				$square_customer_id = $this->create_customer( $user );
+			} else {
+				// Look for existing customer in Square to confirm it exists.
+				$api_response = $this->client->getCustomersApi()->retrieveCustomer( $square_customer_id );
 
-				$customer_request = new \Square\Models\CreateCustomerRequest();
-				$customer_request->setGivenName( $user->first_name );
-				$customer_request->setFamilyName( $user->last_name );
-				$customer_request->setEmailAddress( $user->user_email );
-				$customer_response = $this->client->getCustomersApi()->createCustomer( $customer_request );
-				if ( $customer_response->isSuccess()) {
-					$square_customer = $customer_response->getResult()->getCustomer();
-					$square_customer_id = $square_customer->getId();
-					$this->log( 'Customer created in Square' );
-					update_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->get_environment(), $square_customer_id );
+				if ( $api_response->isSuccess() ) {
+					$result = $api_response->getResult();
+					$customer = $result->getCustomer();
+					// If our customer IDs are different, let's save the found one to usermeta.
+					// This could happen if someone changed their Square App ID and the customer existing in the new one but meta was still saved as old one.
+					// Not at all likely, but ya never know - people be doing crazy things.
+					if ( $square_customer_id != $customer->getId() ) {
+						$square_customer_id = $customer->getId();
+						update_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->get_environment(), $square_customer_id );
+					}
 				} else {
-					$errors = $customer_response->getErrors();
-					$this->log( $errors, 'Customer NOT created' );
-					return false;
+					$errors = $api_response->getErrors();
+					$this->log( 'Could not find existing customer (' . $square_customer_id . '), creating a new one...' );
+					$square_customer_id = $this->create_customer( $user );
+					if ( empty( $square_customer_id ) ) {
+						$this->log( 'Could not create a new customer in Square' );
+						return false; // We must have a customer so let's just bail.
+					}
 				}
-
 			}
 
 		} else {
@@ -1495,7 +1524,7 @@ class PMProGateway_square extends PMProGateway {
 			$order->payment_transaction_id = $invoice['order_id'];
 			$order->saveOrder();
 
-			$this->log( 'Order updated with subscription transaction ID' );
+			$this->log( 'Order updated with subscription transaction ID: ' . $invoice['subscription_id'] );
 
 			pmpro_pull_checkout_data_from_order( $order );
 			return pmpro_complete_async_checkout( $order );
