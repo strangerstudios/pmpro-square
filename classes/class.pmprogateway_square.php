@@ -26,8 +26,7 @@ class PMProGateway_square extends PMProGateway {
 		$this->gateway = $gateway;
 		$this->gateway_environment = get_option( "pmpro_gateway_environment" );
 
-		$wp_upload_dir  = wp_upload_dir();
-		$this->log_file = $wp_upload_dir['basedir'] . '/pmpro-square.log';
+		$this->log_file = $this->get_log_file_path();
 
 		return $this->gateway;
 
@@ -506,7 +505,7 @@ class PMProGateway_square extends PMProGateway {
 					update_option( 'pmpro_square_webhook_' . $environment, $response_body['subscription'] );
 					return array( 'success' => true );
 				} else {
-					$this->log( $response_body, 'Unknown error creating webhooks' );
+					$this->log( $response_body, 'Unknown error creating webhooks for email@test.com' );
 					return array( 'error' => __( 'Unknown error creating webhooks', 'pmpro-square' ) );
 				}
 			}
@@ -675,7 +674,8 @@ class PMProGateway_square extends PMProGateway {
 		<td>
 			<label><input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?></label>
 			<?php if ( ! empty( $values['square_log'] ) ) { ?>
-				<br><br><a href="../wp-content/uploads/pmpro-square.log" target="_blank" class="button"><?php esc_html_e( 'View log file', 'pmpro-square' ); ?></a>
+				<?php $log_file_name = get_option( 'pmpro_square_log_file_name' ); ?>
+				<br><br><a href="../wp-content/uploads/<?php echo esc_attr( $log_file_name ); ?>" target="_blank" class="button"><?php esc_html_e( 'View log file', 'pmpro-square' ); ?></a>
 			<?php } ?>
 		</td>
 	</tr>
@@ -1546,29 +1546,60 @@ class PMProGateway_square extends PMProGateway {
 			return;
 		}
 
-		$date = current_time( 'y-m-d H:i:s' );
+		$date = '[' . current_time( 'y-m-d H:i:s' ) . ']';
 
-		$fp = fopen( $this->log_file, 'a' );
+		if ( is_array( $message ) || is_object( $message ) ) {
+			$message = print_r( $message, true );
+		}
+
+		$log_message = $date . ' ' . $message;
 
 		if ( $prefix ) {
 			if ( is_array( $prefix ) || is_object( $prefix ) ) {
 				$prefix = print_r( $prefix, true );
 			}
-			$prefix = $date . ': ' . $prefix . "\n";
-			fwrite( $fp, $prefix );
+			$log_message = $date . ' ' . $prefix . "\n" . $log_message;
 		}
 
-		if ( is_array( $message ) || is_object( $message ) ) {
-			$message = print_r( $message, true );
-		}
-		$log_message = $date . ': ' . $message;
+		$pattern = '/(?<=@)([a-zA-Z0-9._%+-]+)(?=\.[a-zA-Z]{2,})/';
+		$log_message = preg_replace( $pattern, '****', $log_message );
+
 		if ( is_user_logged_in() ) {
 			$log_message .= ' (User ID: ' . get_current_user_id() . ')';
 		}
 		$log_message .= "\n";
+
+		$fp = fopen( $this->log_file, 'a' );
 		fwrite( $fp, $log_message );
 		fclose( $fp );
 
+	}
+
+	/**
+	 * Get the file path for the debug log file.
+	 *
+	 * @return string
+	 */
+	function get_log_file_path() {
+		// Check if we have a unique file name saved already.
+		$file_name = get_option( 'pmpro_square_log_file_name' );
+		if ( empty( $file_name ) ) {
+			$file_name = 'pmpro-square-log-' . uniqid() . '.txt';
+			update_option( 'pmpro_square_log_file_name', $file_name );
+		}
+
+		// Build the debug log file path in uploads dir
+		$wp_upload_dir  = wp_upload_dir();
+		$log_path = $wp_upload_dir['basedir'] . '/' . $file_name;
+
+		/**
+		 * Filter the debug log file path. 
+		 * 
+		 * @param string $path
+		 */
+		$log_path = apply_filters( 'pmpro_square_log_path', $log_path );
+
+		return $log_path;
 	}
 
 }
