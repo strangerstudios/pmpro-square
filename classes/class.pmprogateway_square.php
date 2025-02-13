@@ -64,6 +64,8 @@ class PMProGateway_square extends PMProGateway {
 			add_filter( 'pmpro_include_billing_address_fields', array( $this, 'include_billing_address_fields' ) );
 			add_filter( 'pmpro_include_payment_information_fields', array( $this, 'include_payment_information_fields' ) );	
 
+			add_filter( 'pmpro_after_checkout_preheader', array( $this, 'clear_pmpro_review' ) );			
+
 			add_filter( 'pmpro_after_update_billing', array( $this, 'update_billing_card' ), 10, 2 );	
 
 			add_action( 'wp', array( $this, 'webhook_listener' ), 999 );
@@ -1311,6 +1313,27 @@ class PMProGateway_square extends PMProGateway {
 		// If we got here, something didn't go correctly.
 		return false;
 
+	}
+
+	/**
+	 * Clear $pmpro_review.
+	 *
+	 * Do not show the Complete Payment screen if there is an error.
+	 */
+	public static function clear_pmpro_review( $pmpro_review ) {
+		// If we don't have an order, bail.
+		if ( empty( $pmpro_review ) || ! is_a( $pmpro_review, 'MemberOrder' ) ) {
+			return;
+		}
+
+		// If this is not a Square order, bail.
+		if ( 'square' !== $pmpro_review->gateway ) {
+			return;
+		}
+
+		// Clear the global.
+		global $pmpro_review;
+		$pmpro_review = false;
 	}
 
 	/**
