@@ -1021,7 +1021,7 @@ class PMProGateway_square extends PMProGateway {
 			$square_customer = $customer_response->getResult()->getCustomer();
 			$square_customer_id = $square_customer->getId();
 			$this->log( 'Customer created in Square' );
-			update_user_meta( $user_id, 'pmpro_square_customer_id_' . $this->get_environment(), $square_customer_id );
+			update_user_meta( $user->ID, 'pmpro_square_customer_id_' . $this->get_environment(), $square_customer_id );
 			return $square_customer_id;
 		} else {
 			$errors = $customer_response->getErrors();
