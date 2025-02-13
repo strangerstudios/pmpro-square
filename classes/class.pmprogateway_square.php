@@ -505,7 +505,7 @@ class PMProGateway_square extends PMProGateway {
 					update_option( 'pmpro_square_webhook_' . $environment, $response_body['subscription'] );
 					return array( 'success' => true );
 				} else {
-					$this->log( $response_body, 'Unknown error creating webhooks for email@test.com' );
+					$this->log( $response_body, 'Unknown error creating webhooks' );
 					return array( 'error' => __( 'Unknown error creating webhooks', 'pmpro-square' ) );
 				}
 			}
