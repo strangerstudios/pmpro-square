@@ -49,6 +49,9 @@ class PMProGateway_square extends PMProGateway {
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'refresh_locations_auto' ) );
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'create_webhooks_auto' ) );
 
+		add_action( 'wp_ajax_nopriv_pmpro_square_webhook', array( $this, 'webhook_listener' ) );
+		add_action( 'wp_ajax_pmpro_square_webhook', array( $this, 'webhook_listener' ) );
+
 		$gateway = pmpro_getGateway();
 
 		if ( $gateway == "square" ) {		
@@ -60,13 +63,12 @@ class PMProGateway_square extends PMProGateway {
 			add_filter( 'pmpro_required_billing_fields', array( $this, 'required_billing_fields' ) );
 			add_action( 'admin_notices', array( $this, 'refresh_locations_manual' ) );
 			add_action( 'admin_notices', array( $this, 'create_webhooks_manual' ) );
+			add_action( 'admin_notices', array( $this, 'disable_webhooks_manual' ) );
 
 			add_filter( 'pmpro_include_billing_address_fields', array( $this, 'include_billing_address_fields' ) );
 			add_filter( 'pmpro_include_payment_information_fields', array( $this, 'include_payment_information_fields' ) );	
 
 			add_filter( 'pmpro_after_update_billing', array( $this, 'update_billing_card' ), 10, 2 );	
-
-			add_action( 'wp', array( $this, 'webhook_listener' ), 999 );
 
 			add_action( 'pmpro_square_check_webhooks_status', array( $this, 'check_webhooks' ) );
 	
@@ -340,13 +342,11 @@ class PMProGateway_square extends PMProGateway {
 	 * Build URL for the webhook.
 	 */
 	private function get_webhook_url() {
-		$url = trailingslashit( get_bloginfo( 'url' ) );
-		$url = add_query_arg( 'pmpro_square_webhook', 1, $url );
-		return $url;
+		return admin_url( 'admin-ajax.php' ) . '?action=pmpro_square_webhook';
 	}
 
 	/**
-	 * Does API request to get and save the available locations.
+	 * Process manual request to create webhooks for the selected environment.
 	 */
 	public function create_webhooks_manual() {
 
@@ -374,6 +374,37 @@ class PMProGateway_square extends PMProGateway {
 			<?php	
 		}
 	}
+
+	/**
+	 * Process manual request to disable webhooks for the selected environment.
+	 */
+	public function disable_webhooks_manual() {
+
+		if ( empty( $_GET['pmpro_square_disable_webhooks'] ) ) {
+			return false;
+		}
+
+		if ( ! empty( $_GET['_wpnonce'] ) && ! wp_verify_nonce( $_GET['_wpnonce'], 'pmpro_square_disable_webhooks' ) ) {
+			return false;
+		}
+
+		$environment = pmpro_getParam( 'pmpro_square_disable_webhooks', 'GET' );
+		$result = $this->disable_webhooks( $environment );
+		if ( ! empty( $result['success'] ) ) {
+			?>
+			<div class="updated notice">
+				<p><?php esc_html_e( 'Webhooks have been disabled', 'pmpro-square' ); ?></p>
+			</div>
+			<?php
+		} else {
+			?>
+			<div class="error notice">
+				<p><?php esc_html_e( 'Webhooks could not be disabled', 'pmpro-square' ); ?>: <?php echo esc_html( $result['error'] ); ?></p>
+			</div>
+			<?php	
+		}
+	}
+
 
 	/**
 	 * Runs the webhook creation automatically when payment settings are saved.
@@ -517,6 +548,43 @@ class PMProGateway_square extends PMProGateway {
 			
 	}
 
+	/*
+	 * Creating the webooks via API
+	 */
+	private function disable_webhooks( $environment ) {
+
+		if ( $this->is_ready() ) {
+
+			$webhooks = get_option( 'pmpro_square_webhook_' . $environment );
+			if ( empty( $webhooks ) ) {
+				return array( 'error' => __( 'No known webhooks to disable', 'pmpro-square' ) );
+			}
+
+			$this->log( 'Disabling webhooks in ' . $environment . '...' );
+
+			$this->setup( $environment );
+
+			$api_response = $this->client->getWebhookSubscriptionsApi()->deleteWebhookSubscription( $webhooks['id'] );
+
+			if ( $api_response->isSuccess() ) {
+				delete_option( 'pmpro_square_webhook_' . $environment );
+				return array( 'success' => true );
+			} else {
+				$errors = $api_response->getErrors();
+				$this->log( 'Failed disabling webhooks: ' . print_r( $errors, 1 ) );
+				if ( $errors[0]->getCode() == 'NOT_FOUND' ) {
+					// If we cannot find any then let's at least delete what we have on record now and call it a win.
+					delete_option( 'pmpro_square_webhook_' . $environment );
+					return array( 'success' => true );
+				}
+				return array( 'error' => $errors[0]->getCode() );
+			}
+
+		}
+			
+	}
+
+
 	/**
 	 * Display fields for this gateway's options.
 	 */
@@ -576,9 +644,13 @@ class PMProGateway_square extends PMProGateway {
 				<?php
 				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
 				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>' . esc_html( join( ', ', $webhook['event_types'] ) ) . '</p></div>';
+					echo '<div class="notice notice-success inline"><p>';
+					esc_html_e( join( ', ', $webhook['event_types'] ) );
+					echo '<br><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=sandbox' ), 'pmpro_square_disable_webhooks' ) . '">' . esc_html__( 'Disable webhooks', 'pmpro-square' ) . '</a>';
+					echo '</p></div>';
 				} else {
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
+					echo '<p><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a></p>';
+					echo '<p>' . __( 'Webhook URL', 'pmpro-square' ) . ': <code>' . $this->get_webhook_url() . '</code></p>';
 				}
 				?>
 			</td>
@@ -639,9 +711,13 @@ class PMProGateway_square extends PMProGateway {
 			<?php
 				$webhook = get_option( 'pmpro_square_webhook_live' );
 				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>' . esc_html( join( ', ', $webhook['event_types'] ) ) . '</p></div>';
+					echo '<div class="notice notice-success inline"><p>';
+					esc_html_e( join( ', ', $webhook['event_types'] ) );
+					echo '<br><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=live' ), 'pmpro_square_disable_webhooks' ) . '">' . esc_html__( 'Disable webhooks', 'pmpro-square' ) . '</a>';
+					echo '</p></div>';
 				} else {
-					echo '<a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a>';
+					echo '<p><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a></p>';
+					echo '<p>' . __( 'Webhook URL', 'pmpro-square' ) . ': <code>' . $this->get_webhook_url() . '</code></p>';
 				}
 				?>
 			</td>
@@ -1457,84 +1533,11 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
-	 * Process webhook requests.
+	 * Send traffic from wp-admin/admin-ajax.php?action=pmpro_square_webhook to webhook handler
 	 */
-	public function webhook_listener() {
-		global $wpdb;
-
-		if ( empty( $_GET['pmpro_square_webhook'] ) ) {
-			return;
-		}
-
-		$this->setup();
-
-		$environment = get_option( 'pmpro_gateway_environment' );
-		$webhook_data = get_option( 'pmpro_square_webhook_' . $environment );
-		if ( empty( $webhook_data ) ) {
-			$this->log( 'No webhook settings data' );
-			http_response_code( 403 );
-			exit;
-		}
-
-		$headers = apache_request_headers();
-		$signature = $headers["X-Square-Hmacsha256-Signature"];
-		
-		// Signature completely empty (Throw a warning/bail)
-		if ( empty( $signature ) ) {
-			$this->log( 'No signature' );
-			http_response_code( 403 );
-			exit;
-		}
-
-		$body = '';   
-		$handle = fopen( 'php://input', 'r' );
-		while( ! feof( $handle ) ) {
-			$body .= fread( $handle, 1024 );
-		}
-
-		if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signature, $webhook_data['signature_key'], $this->get_webhook_url() ) ) {
-			$this->log( "Error verifying webhook signature" );
-			http_response_code( 403 );
-			exit;
-		}
-
-		$webhook = json_decode( $body, true );
-
-		// Invoice.payment_made is really the only one we need at the moment.
-		if ( $webhook['type'] === 'invoice.payment_made' ) {
-
-			$this->log( 'Webhook received: invoice.payment_made' );
-
-			$invoice = $webhook['data']['object']['invoice'];
-
-			$sql = $wpdb->prepare( "SELECT id FROM $wpdb->pmpro_membership_orders WHERE subscription_transaction_id = %s", $invoice['subscription_id'] );
-			$order_id = $wpdb->get_var( $sql );
-			if ( empty( $order_id ) ) {
-				$this->log( 'Webhook could not find order with square subscription ID: ' . $invoice['subscription_id'] );
-				$this->log( $sql );
-				exit();
-			}
-	
-			$order = new MemberOrder( $order_id );
-	
-			if ( $invoice['status'] !== 'PAID' ) {
-				return;
-			}
-
-			$order->payment_transaction_id = $invoice['order_id'];
-			$order->saveOrder();
-
-			$this->log( 'Order updated with subscription transaction ID: ' . $invoice['subscription_id'] );
-
-			pmpro_pull_checkout_data_from_order( $order );
-			return pmpro_complete_async_checkout( $order );
-
-		}
-
-		$this->log( 'Webhook received, no action taken: ' . $webhook['type'] );
-		http_response_code( 200 );
+	static function webhook_listener() {
+		require_once PMPRO_SQUARE_DIR . 'services/square_webhook.php';
 		exit;
-
 	}
 
 	/**
