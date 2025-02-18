@@ -19,6 +19,8 @@ define( "PMPRO_SQUARE_URL", plugin_dir_url( __FILE__ ) );
  */
 function pmpro_square_load_gateway() {
 
+	load_plugin_textdomain( 'pmpro-square' );
+
 	if ( class_exists( 'PMProGateway' ) ) {
 		require_once( PMPRO_SQUARE_DIR . 'includes/libs/autoload.php' );
 		require_once( PMPRO_SQUARE_DIR . 'classes/class.pmprogateway_square.php' );
@@ -88,20 +90,11 @@ add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'pmpro_square_
 function pmpro_square_plugin_row_meta( $links, $file ) {
 	if ( strpos( $file, 'pmpro-square.php' ) !== false ) {
 		$new_links = array(
-			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/add-ons/square/' ) . '" title="' . esc_attr( __( 'View Documentation', 'pmpro-square' ) ) . '">' . esc_html__( 'Docs', 'pmpro-square' ) . '</a>',
-			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/support/' ) . '" title="' . esc_attr( __( 'Visit Customer Support Forum', 'pmpro-square' ) ) . '">' . esc_html__( 'Support', 'pmpro-square' ) . '</a>',
+			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/add-ons/square/' ) . '" title="' . esc_attr__( 'View Documentation', 'pmpro-square' ) . '">' . esc_html__( 'Docs', 'pmpro-square' ) . '</a>',
+			'<a href="' . esc_url( 'https://www.paidmembershipspro.com/support/' ) . '" title="' . esc_attr__( 'Visit Customer Support Forum', 'pmpro-square' ) . '">' . esc_html__( 'Support', 'pmpro-square' ) . '</a>',
 		);
 		$links = array_merge( $links, $new_links );
 	}
 	return $links;
 }
 add_filter( 'plugin_row_meta', 'pmpro_square_plugin_row_meta', 10, 2 );
-
-/**
- * Load the languages folder for translations.
- */
-function pmprosquare_load_textdomain(){
-	load_plugin_textdomain( 'pmpro-square' );
-}
-add_action( 'plugins_loaded', 'pmprosquare_load_textdomain' );
-
