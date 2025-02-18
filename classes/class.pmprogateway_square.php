@@ -1565,7 +1565,6 @@ class PMProGateway_square extends PMProGateway {
 			$square_subscription = $api_response->getResult()->getSubscription();
 
 			$status = $square_subscription->getStatus();
-			$this->log( 'Status: ' . $status );
 			if ( $status === 'ACTIVE' ) {
 				$update_array['status'] = 'active';
 			} elseif ( $status === 'CANCELED' ) {
@@ -1577,7 +1576,6 @@ class PMProGateway_square extends PMProGateway {
 
 			// We get this cancelled date separate from status because it could be canceled but still running until the expiration date.
 			$cancelled_date = $square_subscription->getCanceledDate();
-			$this->log( 'Cancelled date: ' . $cancelled_date );
 			if ( ! empty( $cancelled_date ) ) {
 				$update_array['status'] = 'cancelled';
 				$update_array['enddate'] = date( 'Y-m-d H:i:s', strtotime( $cancelled_date ) );
@@ -1622,6 +1620,7 @@ class PMProGateway_square extends PMProGateway {
 				return print_r( $errors, 1 );
 			}
 
+			$this->log( 'Subscription synced' );
 			$this->log( $update_array );
 			$subscription->set( $update_array );
 	
