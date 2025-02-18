@@ -6,50 +6,8 @@ async function pmpro_square_init_card( payments ) {
 
 
 async function pmpro_square_set_payment_token( token ) {
-	console.log( 'Square Token: ' + token );
 	jQuery( '#pmpro_form' ).append( '<input type="hidden" name="square_payment_token" value="' + token + '" />' ).submit();
 }
-
-
-/*
-// Call this function to send a payment token, buyer name, and other details
-// to the project server code so that a payment can be created with
-// Payments API
-async function pmpro_square_create_payment( token ) {
-
-	const data = {
-		'action': 'pmpro_square_init_order',
-		'source_id': token,
-		'level_id': pmpro_square_vars.level_id,
-		'security': pmpro_square_vars.security,
-	}
-
-	console.log( 'Square create payment data:', data );
-
-	jQuery.ajax(
-		{
-			type: 'POST',
-			url: pmpro_square_vars.ajax_url,
-			data: data,
-			success: function( result, textStatus, XMLHttpRequest) {
-
-				if ( result.success ) {
-					jQuery( '#pmpro_form' ).append( '<input type="hidden" name="square_payment_id" value="' + result.data.payment_id + '" />' ).submit();
-				} else {
-					jQuery( '#pmpro-square-status' ).html( '' );
-					jQuery( '#pmpro-square-status' ).prepend( '<div style="background: red; color: #FFF; padding: 7px 12px;">' + result.data.reasons + '</div>' );
-					return false;
-				}
-
-			},
-			error: function( MLHttpRequest, textStatus, errorThrown ) {
-				alert( 'Sorry, there was an error with the attempt to process with Square' );
-			}
-		}
-	);
-
-}
-*/
 
  // This function tokenizes a payment method.
  // The ‘error’ thrown from this async function denotes a failed tokenization,
@@ -108,25 +66,24 @@ document.addEventListener(
 
 		// Required in SCA Mandated Regions: Learn more at https://developer.squareup.com/docs/sca-overview
 		async function pmpro_square_verify_buyer(payments, token) {
-			console.log( 'verify buyer' );
 			const verificationDetails = {
 				amount: pmpro_square_vars.amount,
 				billingContact: { },
 				currencyCode: pmpro_square_vars.currency,
 				intent: pmpro_square_vars.intent,
 			};
+			console.log( verificationDetails );
 			
 			const verificationResults = await payments.verifyBuyer(
 				token,
 				verificationDetails,
 			);
-			console.log( 'Verification results:', verificationResults );
+			console.log( verificationResults );
 			return verificationResults.token;
 		}
 		
 		async function pmpro_square_handle_submission( event, paymentMethod ) {
 			event.preventDefault();
-			console.log( 'handle submission' );
 			try {
 				const pmpro_square_token      = await pmpro_square_tokenize( paymentMethod );
 				const pmpro_square_verification_token = await pmpro_square_verify_buyer( pmpro_square_payments, pmpro_square_token );
@@ -149,3 +106,17 @@ document.addEventListener(
 
 	}
 );
+
+// Look for price change and updated payment info for getting token accordingly
+jQuery(".pmpro_alter_price").change(function(){
+	jQuery.ajax({
+		url: pmpro_square_vars.rest_url + 'pmpro/v1/checkout_level',
+		dataType: 'json',
+		data: pmpro_getCheckoutFormDataForCheckoutLevels(),
+		success: function(data) {
+			if ( data.hasOwnProperty('initial_payment') ) {
+				pmpro_square_vars.amount = data.initial_payment;
+			}
+		}
+	});
+});

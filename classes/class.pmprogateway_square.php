@@ -274,7 +274,7 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function refresh_locations_manual() {
 
-		if ( !empty( $_GET['pmpro_square_refresh_locations'] ) || ! current_user_can( 'manage_options' ) ) {
+		if ( empty( $_GET['pmpro_square_refresh_locations'] ) || ! current_user_can( 'manage_options' ) ) {
 			return false;
 		}
 
@@ -784,6 +784,7 @@ class PMProGateway_square extends PMProGateway {
 			'pmpro-square-processing',
 			'pmpro_square_vars',
 			array(
+				'rest_url'        => get_rest_url(),
 				'application_id' => $this->application_id,
 				'location_id'    => $this->location_id,
 				'level_id'       => $level_id,
@@ -879,6 +880,15 @@ class PMProGateway_square extends PMProGateway {
 	
 		// Convert membership level to array for comparison.
 		$membership_level_data = (array) $membership_level;
+
+		// We would need to create a new subscription plan variation if we have different number of days to delay based on sub delay.
+		$subscription_delay = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+		if ( $subscription_delay ) {
+			$membership_fields_to_compare[] = 'delay_days';
+			$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
+			$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+			$membership_level_data['delay_days'] = $subscription_delay_days;
+		}
 	
 		// Filter $membership_level_data to only include relevant keys and values.
 		$filtered_membership_data = array_intersect_key( $membership_level_data, array_flip( $membership_fields_to_compare ) );
@@ -947,26 +957,15 @@ class PMProGateway_square extends PMProGateway {
 
 		$phases = array();
 
-		$subscription_delay  = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
-
-		// Figure out cadence based on cycle period.
-		if ( $membership_level->cycle_period == "Day" ) {
-			$cycle_period = 'DAILY';
-		} else if ( $membership_level->cycle_period == "Week" ) {
-			$cycle_period = 'WEEKLY';
-		} else if ( $membership_level->cycle_period == "Month" ) {
-			$cycle_period = 'MONTHLY';
-		} else if ( $membership_level->cycle_period == "Year" ) {
-			$cycle_period = 'ANNUAL';
-		}
-
+		$subscription_delay = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+		
 		$ordinal = 0; // Phase number in the sequence.
 
-		// Define the initial price.
-		if ( $order->subtotal ) {
-			$initial_payment = $order->subtotal;
+		// Define the initial price phase if set and different from recurring billing amount.
+		if ( $membership_level->initial_payment && $membership_level->initial_payment != $membership_level->billing_amount ) {
+
 			// We will pass the tax % later so do not need to add it to the total here.
-			$initial_payment = $initial_payment * 100; // Square works in cents.
+			$initial_payment = $membership_level->initial_payment * 100; // Square works in cents.
 
 			$initial_price_money = new \Square\Models\Money();
 			$initial_price_money->setAmount( $initial_payment );
@@ -983,7 +982,13 @@ class PMProGateway_square extends PMProGateway {
 				$initial_phase = new \Square\Models\SubscriptionPhase( 'DAILY' );
 				$initial_phase->setPeriods( $subscription_delay_days );
 			} else {
-				$initial_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+				$cadence = $this->get_cadence( $membership_level->cycle_period, $membership_level->cycle_number );
+				if ( ! $cadence ) {
+					$error_message = sprintf( __( 'Invalid cadence for initial payment (Period: %s, Limit: %s)', 'pmpro-square' ), $membership_level->cycle_period, $membership_level->cycle_number );
+					$this->log( $error_message );
+					return false;
+				}
+				$initial_phase = new \Square\Models\SubscriptionPhase( $cadence );
 				$initial_phase->setPeriods( 1 );
 			}
 
@@ -995,6 +1000,7 @@ class PMProGateway_square extends PMProGateway {
 
 		// Add the trial if set and we do not have a subscription delay.
 		if ( empty( $subscription_delay ) && $membership_level->trial_amount && $membership_level->trial_limit ) {
+
 			$trial_payment = $membership_level->trial_amount;
 			// We will pass the tax % later so do not need to add it to the total here.
 			$trial_payment = $trial_payment * 100; // Square works in cents.
@@ -1007,7 +1013,14 @@ class PMProGateway_square extends PMProGateway {
 			$trial_pricing->setType( 'STATIC' );
 			$trial_pricing->setPriceMoney( $trial_price_money );
 
-			$trial_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+			$cadence = $this->get_cadence( $membership_level->cycle_period, $membership_level->trial_limit );
+			if ( ! $cadence ) {
+				$error_message = sprintf( __( 'Invalid cadence for monthly payment (Period: %s, Limit: %s)', 'pmpro-square' ), $membership_level->cycle_period, $membership_level->trial_limit );
+				$this->log( $error_message );
+				return false;
+			}
+	
+			$trial_phase = new \Square\Models\SubscriptionPhase( $cadence );
 			$trial_phase->setOrdinal( $ordinal++ ); // The order in which the phase is to be processed.
 			$trial_phase->setPricing( $trial_pricing );
 			$trial_phase->setPeriods( intval( $membership_level->trial_limit ) );
@@ -1027,7 +1040,14 @@ class PMProGateway_square extends PMProGateway {
 		$recurring_pricing->setType( 'STATIC' );
 		$recurring_pricing->setPriceMoney( $recurring_price_money );
 		
-		$subscription_phase = new \Square\Models\SubscriptionPhase( $cycle_period );
+		$cadence = $this->get_cadence( $membership_level->cycle_period, $membership_level->cycle_number );
+		if ( ! $cadence ) {
+			$error_message = sprintf( __( 'Invalid cadence for monthly payment (Period: %s, Limit: %s)', 'pmpro-square' ), $membership_level->cycle_period, $membership_level->cycle_number );
+			$this->log( $error_message );
+			return false;
+		}
+
+		$subscription_phase = new \Square\Models\SubscriptionPhase( $cadence );
 		$subscription_phase->setOrdinal( $ordinal++ ); // The order in which the phase is to be processed.
 		$subscription_phase->setPricing( $recurring_pricing );
 
@@ -1043,6 +1063,57 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
+	 * Determine the proper cadence from very strict set of available for Square API.
+	 * Reference: https://developer.squareup.com/reference/square/objects/SubscriptionPhase
+	 **/
+	private function get_cadence( $period, $number ) {
+
+		$number = intval( $number ); // Force int for comparison.
+
+		if ( $period == "Day" ) {
+			if ( $number == 1 ) {
+				return 'DAILY';
+			} elseif ( $number == 30 ) {
+				return 'THIRTY_DAYS';
+			} elseif ( $number == 60 ) {
+				return 'SIXTY_DAYS';
+			} elseif ( $number == 90 ) {
+				return 'NINETY_DAYS';
+			}
+			return false;
+		} elseif ( $period == "Week" ) {
+			if ( $number == 1 ) {
+				return 'WEEKLY';
+			} elseif ( $number == 2 ) {
+				return 'EVERY_TWO_WEEKS';
+			}
+			return false;
+		} elseif ( $period == "Month" ) {
+			if ( $number == 1 ) {
+				return 'MONTHLY';
+			} elseif ( $number == 2 ) {
+				return 'EVERY_TWO_MONTHS';
+			} elseif ( $number == 3 ) {
+				return 'QUARTERLY';
+			} elseif ( $number == 4 ) {
+				return 'EVERY_FOUR_MONTHS';
+			} elseif ( $number == 6 ) {
+				return 'EVERY_SIX_MONTHS';
+			}
+			return false;
+		} elseif ( $period == "Year" ) {
+			if ( $number == 1 ) {
+				return 'ANNUAL';
+			} elseif ( $number == 2 ) {
+				return 'EVERY_TWO_YEARS';
+			}
+			return false;
+		}
+		return false;
+
+	}
+
+	/**
 	 * Creating a new subscription plan variation.
 	 **/
 	private function create_subscription_plan_variation( $subscription_plan_id, $membership_level, $order ) {
@@ -1052,6 +1123,9 @@ class PMProGateway_square extends PMProGateway {
 
 		// Get the phases based on membership level settings.
 		$phases = $this->create_subscription_phases( $membership_level, $order );
+		if ( ! $phases ) {
+			return false;
+		}
 
 		$subscription_plan_variation_data = new \Square\Models\CatalogSubscriptionPlanVariation( $membership_level->name, $phases );
 		$subscription_plan_variation_data->setSubscriptionPlanId( $subscription_plan_id );
@@ -1074,7 +1148,17 @@ class PMProGateway_square extends PMProGateway {
 			if ( empty( $existing_plan_variations ) ) {
 				$existing_plan_variations = array();
 			}
-			$existing_plan_variations[ $subscription_plan_variation_id ] = (array) $membership_level;
+			
+			$membership_level_array = (array) $membership_level;
+
+			// We need to add the # of delayed days as part of the plan variation stored locally for later comparison to see if a new one is needed.
+			$subscription_delay = get_option( 'pmpro_subscription_delay_' . $membership_level->id , '' );
+			if ( $subscription_delay ) {
+				$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
+				$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+				$membership_level_array['delay_days'] = $subscription_delay_days;
+			}	
+			$existing_plan_variations[ $subscription_plan_variation_id ] = $membership_level_array;
 			update_option( 'pmpro_square_subscription_plan_variations_' . $this->get_environment() . '_' . $membership_level->id, $existing_plan_variations );
 			return $subscription_plan_variation_id;
 		} 
@@ -1182,9 +1266,15 @@ class PMProGateway_square extends PMProGateway {
 		}
 
 		// Setup billing address for API request if present.
-		if ( ! empty( $order->billing->name ) ) {
-			$this->log( 'Prepping billing address' );
-			$address = new \Square\Models\Address();
+		$this->log( 'Prepping billing address' );
+		$address = new \Square\Models\Address();
+		if ( ! empty( $_POST['bfirstname'] ) ) {
+			$address->setFirstName( sanitize_text_field( $_POST['bfirstname'] ) );
+		}
+		if ( ! empty( $_POST['blastname'] ) ) {
+			$address->setLastName( sanitize_text_field( $_POST['blastname'] ) );
+		}
+		if ( ! empty( $order->billing->street ) ) {
 			$address->setAddressLine1( $order->billing->street );
 			$address->setAddressLine2( $order->billing->street2 );
 			$address->setLocality( $order->billing->city );
@@ -1192,23 +1282,17 @@ class PMProGateway_square extends PMProGateway {
 			$address->setPostalCode( $order->billing->zip );
 			$address->setCountry( $order->billing->country );
 			// Pull from POST data as they are separate whereas order combines into single name.
-			if ( ! empty( $_POST['bfirstname'] ) ) {
-				$address->setFirstName( sanitize_text_field( $_POST['bfirstname'] ) );
-			}
-			if ( ! empty( $_POST['blastname'] ) ) {
-				$address->setLastName( sanitize_text_field( $_POST['blastname'] ) );
-			}
 		}
 
 		// One-time payments.
 		if ( ! pmpro_isLevelRecurring( $order->membership_level ) ) {
 
-			$this->log( $order, 'Process one time payment...' );
+			$this->log( 'Process one time payment...' );
 
 			$initial_subtotal       = $order->subtotal;
 			$initial_tax            = $order->getTaxForPrice( $initial_subtotal );
 			$initial_payment_amount = pmpro_round_price( (float) $initial_subtotal + (float) $initial_tax );
-			$initial_payment = $initial_payment * 100; // Square works in cents.
+			$initial_payment_amount = $initial_payment_amount * 100; // Square works in cents.
 
 			$amount_money = new \Square\Models\Money();
 			$amount_money->setAmount( $initial_payment_amount );
@@ -1221,10 +1305,8 @@ class PMProGateway_square extends PMProGateway {
 			$body->setReferenceId( $order->code );
 			$body->setAcceptPartialAuthorization( false );
 			$body->setBuyerEmailAddress( $user->user_email );
-
-			if ( ! empty( $address ) ) {
-				$body->setBillingAddress( $address );
-			}
+			$body->setBillingAddress( $address );
+			$body->setNote( $order->membership_level->name );
 
 			$api_response = $this->client->getPaymentsApi()->createPayment( $body );
 
@@ -1262,8 +1344,8 @@ class PMProGateway_square extends PMProGateway {
 				$square_subscription_plan_id = $this->create_subscription_plan( $order->membership_level );
 				if ( ! $square_subscription_plan_id ) {
 					$this->log( 'Failed to create subscription plan in Square' );
-					wp_die( esc_html__( 'Failed to create subscription plan in Square', 'pmpro-square' ) );
-					exit;
+					$order->error = __( 'Failed to create subscription plan in Square', 'pmpro-square' );
+					return false;
 				}
 
 			}
@@ -1280,8 +1362,8 @@ class PMProGateway_square extends PMProGateway {
 				$square_subscription_plan_variation_id = $this->create_subscription_plan_variation( $square_subscription_plan_id, $order->membership_level, $order );
 				if ( ! $square_subscription_plan_variation_id ) {
 					$this->log( 'Failed at creating subscription plan variation in square' );
-					wp_die( esc_html__( 'Failed to create subscription plan variation in Square', 'pmpro-square' ) );
-					exit;
+					$order->error = __( 'Failed to create subscription plan variation in Square', 'pmpro-square' );
+					return;
 				}
 
 			}
@@ -1291,11 +1373,11 @@ class PMProGateway_square extends PMProGateway {
 			******************/
 			$card = new \Square\Models\Card();
 			$card->setCustomerId( $square_customer_id );
+			$card->setBillingAddress( $address );
 			if ( ! empty( $order->billing->street ) ) {
 				if ( ! empty( $order->billing->name ) ) {
 					$card->setCardholderName( $order->billing->name );
 				}
-				$card->setBillingAddress( $address );
 			}
 
 			$body = new \Square\Models\CreateCardRequest(
@@ -1351,14 +1433,13 @@ class PMProGateway_square extends PMProGateway {
 				$body->setTaxPercentage( $tax_rate * 100 );
 			}
 
-			// If no initial payment, then there is a free trial and need to set a future start date.
-			// But need to take the subscription delay into consideration as well.
 			$subscription_delay  = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
-			if ( empty( $order->subtotal ) && empty( $subscription_delay ) ) {
-				$start_date = date( 'Y-m-d', strtotime( '+1 ' . $order->membership_level->cycle_period ) );
+			// If no initial payment, then there is a free trial and need to set a future start date equal to one length of the cycle period.
+			if ( empty( $order->membership_level->initial_payment ) && empty( $subscription_delay ) ) {
+				$start_date = date( 'Y-m-d', strtotime( '+' . $order->membership_level->cycle_number . ' ' . $order->membership_level->cycle_period ) );
 				$body->setStartDate( $start_date );
 				$this->log( 'Setting delayed start date for trial period: ' . $start_date );
-			} elseif ( empty( $order->subtotal ) && ! empty( $subscription_delay ) ) {
+			} elseif ( empty( $order->membership_level->initial_payment ) && ! empty( $subscription_delay ) ) {
 				// No initial payment but there is a subscription delay, so lets set it based on that.
 				$subscription_start_date = pmpro_calculate_profile_start_date( $order, 'Y-m-d' );
 				$body->setStartDate( $subscription_start_date );
