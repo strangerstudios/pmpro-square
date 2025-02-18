@@ -1563,7 +1563,6 @@ class PMProGateway_square extends PMProGateway {
 
 		if ($api_response->isSuccess()) {
 			$square_subscription = $api_response->getResult()->getSubscription();
-			//_log( $square_subscription );
 
 			$status = $square_subscription->getStatus();
 			$this->log( 'Status: ' . $status );
