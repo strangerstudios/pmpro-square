@@ -93,7 +93,7 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public static function supports( $feature ) {
 		$supports = array(
-			//'subscription_sync' => true,
+			'subscription_sync' => true,
 			'payment_method_updates' => 'individual',
 			//'check_token_orders' => true,
 		);
@@ -1552,6 +1552,83 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	public function update_subscription_info( $subscription ) {
+
+		$this->log( 'Syncing subscription...' );
+
+		$subscription_id = $subscription->get_subscription_transaction_id();
+
+		$this->setup();
+
+		$api_response = $this->client->getSubscriptionsApi()->retrieveSubscription( $subscription_id );
+
+		if ($api_response->isSuccess()) {
+			$square_subscription = $api_response->getResult()->getSubscription();
+
+			$status = $square_subscription->getStatus();
+			if ( $status === 'ACTIVE' ) {
+				$update_array['status'] = 'active';
+			} elseif ( $status === 'CANCELED' ) {
+				$update_array['status'] = 'cancelled';
+			} else {
+				// If still in any other status we can ignore.
+				return false;
+			}
+
+			// We get this cancelled date separate from status because it could be canceled but still running until the expiration date.
+			$cancelled_date = $square_subscription->getCanceledDate();
+			if ( ! empty( $cancelled_date ) ) {
+				$update_array['status'] = 'cancelled';
+				$update_array['enddate'] = date( 'Y-m-d H:i:s', strtotime( $cancelled_date ) );
+				$update_array['next_payment_date'] = '';
+			} else {
+				$charged_through_date = $square_subscription->getChargedThroughDate();
+				if ( $charged_through_date ) {
+					// Square charged through date does not include the time so we are appending the time from the subs original startdate.
+					$update_array['next_payment_date'] = date( 'Y-m-d H:i:s', strtotime( $charged_through_date . ' ' . $subscription->get_startdate( 'H:i:s' ) ) );
+				}
+			}
+
+			$plan_variation_id = $square_subscription->getPlanVariationId();
+			$api_response = $this->client->getCatalogApi()->retrieveCatalogObject( $plan_variation_id );
+			if ($api_response->isSuccess()) {
+				$result = $api_response->getResult();
+
+				// Have to cascade down through the objects to get what we need: phases.
+				$catalog_object = $result->getObject();
+				$plan_variation_data = $catalog_object->getSubscriptionPlanVariationData();
+				$phases = $plan_variation_data->getPhases();
+
+				// Use the last phase to determine the cycle period and price as this is what is used to set this info by default during checkout.
+				$last_phase = array_pop( $phases );
+
+				$cadence = $last_phase->getCadence();
+				if ( $cadence == "DAILY" ) {
+					$update_array['cycle_period'] = 'Day';
+				} else if ( $cadence == "WEEKLY" ) {
+					$update_array['cycle_period'] = 'Week';
+				} else if ( $cadence == "MONTHLY" ) {
+					$update_array['cycle_period'] = 'Month';
+				} else if ( $cadence == "ANNUAL" ) {
+					$update_array['cycle_period'] = 'Year';
+				}
+
+				$update_array['billing_amount'] = (float) $last_phase->getPricing()->getPriceMoney()->getAmount() / 100;
+		
+			} else {
+				$errors = $api_response->getErrors();
+				$this->log( 'Failed syncing subscription - getting plan variation: ' . print_r( $errors, 1 ) );
+				return print_r( $errors, 1 );
+			}
+
+			$this->log( 'Subscription synced' );
+			$this->log( $update_array );
+			$subscription->set( $update_array );
+	
+		} else {
+			$errors = $api_response->getErrors();
+			$this->log( 'Failed syncing subscription: ' . print_r( $errors, 1 ) );
+			return print_r( $errors, 1 );
+		}
 		return false;
 	}
 
