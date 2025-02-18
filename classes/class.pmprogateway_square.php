@@ -174,7 +174,6 @@ class PMProGateway_square extends PMProGateway {
 			BearerAuthCredentialsBuilder::init( $this->personal_access_token )
 		)
 		->environment( ( $environment == 'live' ) ? Environment::PRODUCTION : Environment::SANDBOX )
-		->squareVersion( '2024-12-18' )
 		->build();
 		
 	}
@@ -275,7 +274,7 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function refresh_locations_manual() {
 
-		if ( empty( $_GET['pmpro_square_refresh_locations'] ) ) {
+		if ( !empty( $_GET['pmpro_square_refresh_locations'] ) || ! current_user_can( 'manage_options' ) ) {
 			return false;
 		}
 
@@ -351,7 +350,7 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function create_webhooks_manual() {
 
-		if ( empty( $_GET['pmpro_square_webhooks'] ) ) {
+		if ( empty( $_GET['pmpro_square_webhooks'] ) || ! current_user_can( 'manage_options' ) ) {
 			return false;
 		}
 
@@ -381,7 +380,7 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function disable_webhooks_manual() {
 
-		if ( empty( $_GET['pmpro_square_disable_webhooks'] ) ) {
+		if ( empty( $_GET['pmpro_square_disable_webhooks'] ) || ! current_user_can( 'manage_options' ) ) {
 			return false;
 		}
 
