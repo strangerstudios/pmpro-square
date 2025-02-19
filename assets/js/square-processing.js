@@ -72,13 +72,11 @@ document.addEventListener(
 				currencyCode: pmpro_square_vars.currency,
 				intent: pmpro_square_vars.intent,
 			};
-			console.log( verificationDetails );
 			
 			const verificationResults = await payments.verifyBuyer(
 				token,
 				verificationDetails,
 			);
-			console.log( verificationResults );
 			return verificationResults.token;
 		}
 		
