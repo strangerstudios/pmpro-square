@@ -14,11 +14,10 @@ class PMProGateway_square extends PMProGateway {
 	// Use this to interact with the Square API via SDK.
 	private $environment;
 	private $base_url;
-	//private static $subscription_plan_id;
 	private $application_id;
 	private $location_id;
 	private $personal_access_token;
-	private $client;
+	public $client;
 	private $log_file;
 
 	function __construct( $gateway = NULL ) {
@@ -147,7 +146,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Setup the connection to the API client and get base options.
 	 */
-	private function setup( $environment = '' ) {
+	public function setup( $environment = '' ) {
 
 		if ( empty( $environment ) ) {
 			$environment = get_option( 'pmpro_gateway_environment' );
@@ -341,7 +340,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Build URL for the webhook.
 	 */
-	private function get_webhook_url() {
+	public function get_webhook_url() {
 		return admin_url( 'admin-ajax.php' ) . '?action=pmpro_square_webhook';
 	}
 
@@ -1268,6 +1267,7 @@ class PMProGateway_square extends PMProGateway {
 		// Setup billing address for API request if present.
 		$this->log( 'Prepping billing address' );
 		$address = new \Square\Models\Address();
+		// Pull from POST data as they are separate whereas order combines into single name.
 		if ( ! empty( $_POST['bfirstname'] ) ) {
 			$address->setFirstName( sanitize_text_field( $_POST['bfirstname'] ) );
 		}
@@ -1281,7 +1281,6 @@ class PMProGateway_square extends PMProGateway {
 			$address->setAdministrativeDistrictLevel1( $order->billing->state );
 			$address->setPostalCode( $order->billing->zip );
 			$address->setCountry( $order->billing->country );
-			// Pull from POST data as they are separate whereas order combines into single name.
 		}
 
 		// One-time payments.
@@ -1374,10 +1373,8 @@ class PMProGateway_square extends PMProGateway {
 			$card = new \Square\Models\Card();
 			$card->setCustomerId( $square_customer_id );
 			$card->setBillingAddress( $address );
-			if ( ! empty( $order->billing->street ) ) {
-				if ( ! empty( $order->billing->name ) ) {
-					$card->setCardholderName( $order->billing->name );
-				}
+			if ( ! empty( $order->billing->name ) ) {
+				$card->setCardholderName( $order->billing->name );
 			}
 
 			$body = new \Square\Models\CreateCardRequest(
