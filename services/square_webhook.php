@@ -47,9 +47,6 @@ if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signa
 
 $webhook = json_decode( $body, true );
 
-pmpro_square_webhook_log( 'Webhook received' );
-pmpro_square_webhook_log( $webhook );
-
 // Invoice.payment_made is really the only one we need at the moment.
 if ( $webhook['type'] === 'invoice.payment_made' ) {
 
