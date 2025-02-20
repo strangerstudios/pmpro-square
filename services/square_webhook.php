@@ -47,7 +47,7 @@ if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signa
 
 $webhook = json_decode( $body, true );
 
-// Invoice.payment_made is really the only one we need at the moment.
+// Invoice.payment_made is when information on the subscription is available and also has the payment_transaction_id
 if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 	pmpro_square_webhook_log( 'Webhook received: invoice.payment_made' );
@@ -166,9 +166,9 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 	pmpro_square_webhook_exit();
 
-} elseif ( $webhook['type'] === 'payment.updated' ) {
+} elseif ( $webhook['type'] === 'payment.updated' || $webhook['type'] === 'payment.created' ) {
 
-	pmpro_square_webhook_log( 'Webhook received: payment.updated' );
+	pmpro_square_webhook_log( 'Webhook received: ' . $webhook['type'] );
 
 	$square_payment = $webhook['data']['object']['payment'];
 	$status = $square_payment['status'];
