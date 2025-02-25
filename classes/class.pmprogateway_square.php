@@ -881,11 +881,8 @@ class PMProGateway_square extends PMProGateway {
 		$membership_level_data = (array) $membership_level;
 
 		// We would need to create a new subscription plan variation if we have different number of days to delay based on sub delay.
-		$subscription_delay = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
-		if ( $subscription_delay ) {
-			$membership_fields_to_compare[] = 'delay_days';
-			$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
-			$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+		$subscription_delay_days = $this->calculate_subscription_delay( $order->membership_level, $order );
+		if ( $subscription_delay_days ) {
 			$membership_level_data['delay_days'] = $subscription_delay_days;
 		}
 	
@@ -947,6 +944,30 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
+	 * Calculates the subscription delay in days.
+	 **/
+	private function calculate_subscription_delay( $membership_level, $order ) {
+
+		$subscription_delay_days = 0;
+
+		// Get the expected start date based on the membership level's cycle.
+		$expected_profile_start_date = date_i18n( 'Y-m-d', strtotime( '+ ' . $membership_level->cycle_number . ' ' . $membership_level->cycle_period ) );
+
+		// Calculate using our fancy pmpro_calculate_profile_start_date() which other add-ons can hook into to get the actual profile start date.
+		$actual_profile_start_date = pmpro_calculate_profile_start_date( $order, 'Y-m-d' );
+
+		// If they are different, then we have a custom subscription delay!
+		if ( $expected_profile_start_date != $actual_profile_start_date ) {
+			// Calculate number of days difference between today and actual profile start date.
+			$today = date_i18n( 'Y-m-d' );
+			$subscription_delay_days = ceil( abs( strtotime( $today ) - strtotime( $actual_profile_start_date ) ) / 86400 );
+		}
+
+		return $subscription_delay_days;
+
+	}
+
+	/**
 	 * Prep the phase data when creating a new subscription.
 	 **/
 	private function create_subscription_phases( $membership_level, $order ) {
@@ -956,7 +977,7 @@ class PMProGateway_square extends PMProGateway {
 
 		$phases = array();
 
-		$subscription_delay = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+		$subscription_delay_days = $this->calculate_subscription_delay( $membership_level, $order );
 		
 		$ordinal = 0; // Phase number in the sequence.
 
@@ -975,9 +996,7 @@ class PMProGateway_square extends PMProGateway {
 			$initial_pricing->setPriceMoney( $initial_price_money );
 
 			// If we have subscription delay, use that many days for this initial payment phase.
-			if ( $subscription_delay ) {
-				$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
-				$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+			if ( $subscription_delay_days ) {
 				$initial_phase = new \Square\Models\SubscriptionPhase( 'DAILY' );
 				$initial_phase->setPeriods( $subscription_delay_days );
 			} else {
@@ -998,7 +1017,7 @@ class PMProGateway_square extends PMProGateway {
 		}
 
 		// Add the trial if set and we do not have a subscription delay.
-		if ( empty( $subscription_delay ) && $membership_level->trial_amount && $membership_level->trial_limit ) {
+		if ( empty( $subscription_delay_days ) && ! empty( $membership_level->trial_amount ) && ! empty( $membership_level->trial_limit ) ) {
 
 			$trial_payment = $membership_level->trial_amount;
 			// We will pass the tax % later so do not need to add it to the total here.
@@ -1012,9 +1031,9 @@ class PMProGateway_square extends PMProGateway {
 			$trial_pricing->setType( 'STATIC' );
 			$trial_pricing->setPriceMoney( $trial_price_money );
 
-			$cadence = $this->get_cadence( $membership_level->cycle_period, $membership_level->trial_limit );
+			$cadence = $this->get_cadence( $membership_level->cycle_period, $membership_level->cycle_number );
 			if ( ! $cadence ) {
-				$error_message = sprintf( __( 'Invalid cadence for monthly payment (Period: %s, Limit: %s)', 'pmpro-square' ), $membership_level->cycle_period, $membership_level->trial_limit );
+				$error_message = sprintf( __( 'Invalid cadence for trial payment (Period: %s, Limit: %s)', 'pmpro-square' ), $membership_level->cycle_period, $membership_level->cycle_number );
 				$this->log( $error_message );
 				return false;
 			}
@@ -1056,6 +1075,9 @@ class PMProGateway_square extends PMProGateway {
 		}
 
 		$phases[] = $subscription_phase;
+
+		$this->log( $membership_level, 'Membership level' );
+		$this->log( $phases, 'Phases' );
 
 		return $phases;
 
@@ -1151,10 +1173,8 @@ class PMProGateway_square extends PMProGateway {
 			$membership_level_array = (array) $membership_level;
 
 			// We need to add the # of delayed days as part of the plan variation stored locally for later comparison to see if a new one is needed.
-			$subscription_delay = get_option( 'pmpro_subscription_delay_' . $membership_level->id , '' );
-			if ( $subscription_delay ) {
-				$profile_start_date = pmpro_calculate_profile_start_date( $order, 'U' );
-				$subscription_delay_days = ceil( abs( $profile_start_date - time() ) / 86400 );
+			$subscription_delay_days = $this->calculate_subscription_delay( $membership_level, $order );
+			if ( $subscription_delay_days ) {
 				$membership_level_array['delay_days'] = $subscription_delay_days;
 			}	
 			$existing_plan_variations[ $subscription_plan_variation_id ] = $membership_level_array;
@@ -1430,13 +1450,13 @@ class PMProGateway_square extends PMProGateway {
 				$body->setTaxPercentage( $tax_rate * 100 );
 			}
 
-			$subscription_delay  = get_option( 'pmpro_subscription_delay_' . $order->membership_level->id , '' );
+			$subscription_delay_days = $this->calculate_subscription_delay( $order->membership_level, $order );
 			// If no initial payment, then there is a free trial and need to set a future start date equal to one length of the cycle period.
-			if ( empty( $order->membership_level->initial_payment ) && empty( $subscription_delay ) ) {
+			if ( empty( $order->membership_level->initial_payment ) && empty( $subscription_delay_days ) ) {
 				$start_date = date( 'Y-m-d', strtotime( '+' . $order->membership_level->cycle_number . ' ' . $order->membership_level->cycle_period ) );
 				$body->setStartDate( $start_date );
 				$this->log( 'Setting delayed start date for trial period: ' . $start_date );
-			} elseif ( empty( $order->membership_level->initial_payment ) && ! empty( $subscription_delay ) ) {
+			} elseif ( empty( $order->membership_level->initial_payment ) && ! empty( $subscription_delay_days ) ) {
 				// No initial payment but there is a subscription delay, so lets set it based on that.
 				$subscription_start_date = pmpro_calculate_profile_start_date( $order, 'Y-m-d' );
 				$body->setStartDate( $subscription_start_date );
