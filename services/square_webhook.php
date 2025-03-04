@@ -40,6 +40,8 @@ while( ! feof( $handle ) ) {
 	$body .= fread( $handle, 1024 );
 }
 
+pmpro_square_webhook_log( $body );
+
 if ( ! \Square\Utils\WebhooksHelper::isValidWebhookEventSignature( $body, $signature, $webhook_data['signature_key'], $square_gateway->get_webhook_url() ) ) {
 	pmpro_square_webhook_log( "Error verifying webhook signature" );
 	pmpro_square_webhook_exit();
@@ -53,21 +55,49 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 	pmpro_square_webhook_log( 'Webhook received: invoice.payment_made' );
 
 	$invoice = $webhook['data']['object']['invoice'];
-	$order_id = $invoice['order_id'];
+	$square_order_id = $invoice['order_id'];
 	$subscription_id = $invoice['subscription_id'];
 
 	// We have to look up by subscription as on initial payment the API does not yet give us a payment ID.
 	$order = new MemberOrder();
 	$order->getLastMemberOrderBySubscriptionTransactionID( $subscription_id );
 
-	//no? create it
-	if ( empty( $order->id ) ) {				
+	if ( ! empty( $order->id ) && empty( $order->payment_transaction_id ) ) {
+
+		// Order already exists but does not yet have a payment transaction ID - this means it's the first payment from checkout.
+		// As the first payment, an order already exists in the DB we just need to set the payment transaction ID.
+		pmpro_square_webhook_log( "First order after checkout, updating the payment transaction id for Order " . $square_order_id . "." );
+
+		$api_response = $square_gateway->client->getOrdersApi()->retrieveOrder( $square_order_id );
+		if ( $api_response->isSuccess() ) {
+			$square_order = $api_response->getResult()->getOrder();
+		} else {
+			$errors = $api_response->getErrors();
+			pmpro_square_webhook_log( "Couldn't find the order in Square = " . $square_order_id . "." );
+			pmpro_square_webhook_exit();
+		}
+
+		$order->payment_transaction_id = $square_order->getId();
+		$order->saveOrder();
+		pmpro_square_webhook_log( 'Order updated with subscription transaction ID: ' . $square_order->getId() );
+
+	} else {	
 		
+		// Check to see if we already have an order with this payment transaction ID.
+		$existing_order = new MemberOrder();
+		$existing_order->getMemberOrderByPaymentTransactionID( $square_order_id );
+		if ( $existing_order->id ) {
+			pmpro_square_webhook_log( "Already an order with this payment transaction id. Order ID = " . $existing_order->id . ", transaction id = " . $square_order_id );
+			pmpro_square_webhook_exit();
+		}
+
+		// Otherwise we need to create a new order in the system for this invoice payment.
+
 		$user_id = $order->user_id;
 		$user = get_userdata( $user_id );
 
 		if ( empty( $user ) ) {
-			pmpro_square_webhook_log( "Couldn't find the old order's user. Order ID = " . $order->id . "." );
+			pmpro_square_webhook_log( "Couldn't find the old order's user for invoice.payment_made. Square Order ID = " . $square_order_id . "." );
 			pmpro_square_webhook_exit();
 		}
 
@@ -75,37 +105,38 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 		$morder = new MemberOrder();
 		$morder->user_id = $order->user_id;
 		$morder->membership_id = $order->membership_id;
-		$morder->timestamp = strtotime( $invoice['created_at'] );
+		$morder->timestamp = time();
 		
 		global $pmpro_currency;
 		global $pmpro_currencies;
 
 		// Get the order from Square as that has all the actual payment details.
-		$api_response = $square_gateway->client->getOrdersApi()->retrieveOrder( $order_id );
+		$api_response = $square_gateway->client->getOrdersApi()->retrieveOrder( $square_order_id );
 		if ( $api_response->isSuccess() ) {
 			$square_order = $api_response->getResult()->getOrder();
 		} else {
 			$errors = $api_response->getErrors();
-			pmpro_square_webhook_log( "Couldn't find the order in Square = " . $order_id . "." );
+			pmpro_square_webhook_log( "Couldn't find the order in Square = " . $square_order_id . "." );
 			pmpro_square_webhook_exit();
 		}
 		
 		$square_taxes = $square_order->getTaxes();
 		if ( ! empty( $square_taxes ) ) { // We have taxes as part of the order.
 			pmpro_square_webhook_log( $square_taxes );
-			$morder->total = $square_order->getTotalMoney()->getAmount() / 100;
-			$morder->tax = $square_order->getTaxMoney()->getAmount() / 100;
 			$morder->subtotal = $morder->total - $morder->tax; // Back in the subtotal value.
+			$morder->tax = $square_order->getTaxMoney()->getAmount() / 100;
+			$morder->total = $square_order->getTotalMoney()->getAmount() / 100;
 		} else { // No taxes, more straightforward.
 			$morder->subtotal = $square_order->getTotalMoney()->getAmount() / 100;
 			$morder->tax = 0;
+			$morder->total = $square_order->getTotalMoney()->getAmount() / 100;
 		}
 
 		$morder->payment_transaction_id = $square_order->getId();
 		$morder->subscription_transaction_id = $subscription_id;
 
-		$morder->gateway = $old_order->gateway;
-		$morder->gateway_environment = $old_order->gateway_environment;
+		$morder->gateway = $order->gateway;
+		$morder->gateway_environment = $order->gateway_environment;
 
 		// Update payment method and billing address on order.
 		$customer_id = $square_order->getCustomerId();
@@ -133,42 +164,15 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 		do_action( 'pmpro_subscription_payment_completed', $morder );
 	
-	} else {
-
-		// Order already exists, update it with the order ID. 
-		pmpro_square_webhook_log( "Order already exists, so updating it = " . $order_id . "." );
-
-		$api_response = $square_gateway->client->getOrdersApi()->retrieveOrder( $order_id );
-		if ( $api_response->isSuccess() ) {
-			$square_order = $api_response->getResult()->getOrder();
-		} else {
-			$errors = $api_response->getErrors();
-			pmpro_square_webhook_log( "Couldn't find the order in Square = " . $order_id . "." );
-			pmpro_square_webhook_exit();
-		}
-
-		$customer_id = $square_order->getCustomerId();
-		pmpro_square_webhook_log( 'Customer ID: ' . $customer_id );
-		$customer = null;
-		if ( ! empty( $customer_id ) ) {
-			$api_response = $square_gateway->client->getCustomersApi()->retrieveCustomer( $customer_id );
-			if ( $api_response->isSuccess() ) {
-				$customer = $api_response->getResult()->getCustomer();
-			}
-		}
-
-		$order = pmpro_square_webhook_populate_order_from_payment( $order, $square_order, $customer );				
-
-		$order->saveOrder();
-		pmpro_square_webhook_log( 'Order updated with subscription transaction ID: ' . $order_id );
-
-	}
+	} 
 
 	pmpro_square_webhook_exit();
 
 } elseif ( $webhook['type'] === 'payment.updated' || $webhook['type'] === 'payment.created' ) {
 
+	// Looking for failed payments here.
 	pmpro_square_webhook_log( 'Webhook received: ' . $webhook['type'] );
+	pmpro_square_webhook_log( $webhook );
 
 	$square_payment = $webhook['data']['object']['payment'];
 	$status = $square_payment['status'];
@@ -204,7 +208,7 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 			$user = get_userdata( $user_id );
 	
 			if ( empty( $user ) ) {
-				pmpro_square_webhook_log( "Couldn't find the old order's user. Order ID = " . $order->id . "." );
+				pmpro_square_webhook_log( "Couldn't find the old order's user for invoice.payment_made. Square Order ID = " . $square_order_id . "." );
 				pmpro_square_webhook_exit();
 			}			
 	
@@ -241,17 +245,16 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 } elseif ( $webhook['type'] === 'subscription.updated' ) {
 
-	pmpro_square_webhook_log( 'Webhook received: subscription.updated' );
-
 	// Looking for a cancellation here.
-	$subscription = $webhook['data']['object'];
+	$subscription = $webhook['data']['object']['subscription'];
+
+	pmpro_square_webhook_log( 'Webhook received: subscription.updated. Subscription transaction ID = ' . $subscription['id'] . ', Status = ' . $subscription['status'] );
 	pmpro_square_webhook_log( $subscription );
 
 	if ( $subscription['status'] == 'CANCELED' ) {
-		$subscription_id = $subscription['id'];
 		$environment = ( str_contains( $subscription['source']['application_id'], 'sandbox' ) ) ? 'sandbox' : 'live'; // If "sandbox" is in the app id, we are in sandbox mode for this subscription.
-		$result = pmpro_handle_subscription_cancellation_at_gateway( $subscription_id, 'square', $environment );
-		pmpro_square_webhook_log( 'Cancelled membership for user with ID = ' . $user->ID . '. Subscription transaction ID = ' . $subscription_id . '.' );
+		$result = pmpro_handle_subscription_cancellation_at_gateway( $subscription['id'], 'square', $environment );
+		pmpro_square_webhook_log( 'Cancelled membership for user with ID = ' . $user->ID . '. Subscription transaction ID = ' . $subscription['id'] . '.' );
 	}
 
 	pmpro_square_webhook_exit();
@@ -262,7 +265,9 @@ pmpro_square_webhook_log( 'Webhook received, no action taken: ' . $webhook['type
 pmpro_unhandled_webhook();
 pmpro_square_webhook_exit();
 
-
+/**
+ * Log a message to the webhook log.
+ */
 function pmpro_square_webhook_log( $s ) {
 	global $logstr;
 	if ( is_array( $s ) || is_object( $s ) ) {
@@ -271,6 +276,9 @@ function pmpro_square_webhook_log( $s ) {
 	$logstr .= "\t" . $s . "\n";
 }
 
+/**
+ * Exit the webhook script.
+ */
 function pmpro_square_webhook_exit( $status = 200 ) {
 	global $logstr, $gateway_environment;
 
@@ -300,6 +308,9 @@ function pmpro_square_webhook_exit( $status = 200 ) {
 	exit;
 }
 
+/**
+ * Populate the order object with payment details from the Square order.
+ */
 function pmpro_square_webhook_populate_order_from_payment( $order, $square_order, $customer ) {
 	global $square_gateway;
 
@@ -348,8 +359,6 @@ function pmpro_square_webhook_populate_order_from_payment( $order, $square_order
 		}
 
 	}
-	
-	pmpro_square_webhook_log( $order );
-	
+		
 	return $order;
 }
