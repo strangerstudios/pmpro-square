@@ -44,6 +44,7 @@ class PMProGateway_square extends PMProGateway {
 		add_filter( 'pmpro_payment_options', array( $this, 'pmpro_payment_options' ));
 		add_filter( 'pmpro_payment_option_fields', array( $this, 'pmpro_payment_option_fields' ), 10, 2);
 
+		add_action( 'admin_init', array( $this, 'maybe_change_app_id' ) );
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'refresh_locations_auto' ) );
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'create_webhooks_auto' ) );
 
@@ -180,7 +181,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Check if we have the basic necessary data to make an API connection.
 	 */
-	private function is_ready( $ready = false ){
+	private function is_ready() {
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
@@ -269,6 +270,53 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
+	 * Check if we have new application IDs and clear the plan variation options if so.
+	 */
+	public function maybe_change_app_id() {
+
+		// Check for request to save settings.
+		if ( empty( $_REQUEST['savesettings'] ) ) {
+			return;
+		}
+
+		// Check permissions.
+		if ( ! function_exists( "current_user_can" ) || ( ! current_user_can( "manage_options" ) && ! current_user_can( "pmpro_paymentsettings" ) ) ) {
+			return;
+		}
+	
+		// Check request and nonce.
+		if ( empty( $_REQUEST['pmpro_paymentsettings_nonce'] ) || ! check_admin_referer( 'savesettings', 'pmpro_paymentsettings_nonce' ) ) {
+			return;
+		}
+
+		// Check each app ID to see if it has changed. If so, clear the plan variations.
+		$sandbox_app_id = get_option( 'pmpro_square_sandbox_application_id' );
+		$new_sandbox_app_id = $_REQUEST['square_sandbox_application_id'];
+		if ( $sandbox_app_id && $sandbox_app_id !== $new_sandbox_app_id ) {
+			$this->clear_plan_variations( 'sandbox' );
+		}
+
+		$live_app_id = get_option( 'pmpro_square_live_application_id' );
+		$new_live_app_id = $_REQUEST['square_live_application_id'];
+		if ( $live_app_id && $live_app_id !== $new_live_app_id ) {
+			$this->clear_plan_variations( 'live' );
+		}
+	}
+
+	/**	
+	 * Clears the plan variations for an environment.
+	 */
+	private function clear_plan_variations( $environment ) {
+		$this->log( 'Clearing plan variations for ' . $environment );
+		// Get all membership levels.
+		$levels = pmpro_getAllLevels( true, true );
+		foreach ( $levels as $level ) {
+			$this->log( 'Clearing plan variations for level in ' . $environment . ': ' . $level->name );
+			delete_option( 'pmpro_square_subscription_plan_variations_' . $environment . '_' . $level->id );
+		}
+	}
+
+	/**
 	 * Refreshes the list of available locations for an environment on a manual request.
 	 */
 	public function refresh_locations_manual() {
@@ -303,10 +351,17 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function refresh_locations_auto() {
 
-		$existing_locations = get_option( 'pmpro_square_locations_' . $this->get_environment() );
+		if ( empty( $_POST['gateway_environment'] ) ) {
+			return;
+		}
+
+		// Get the environment from the POST data to ensure we are using the selected one at the time of saving as it could have been changed.
+		$environment = sanitize_text_field( $_POST['gateway_environment'] );
+
+		$existing_locations = get_option( 'pmpro_square_locations_' . $environment );
 
 		if ( empty( $existing_locations ) ) {
-			$this->refresh_locations( $this->get_environment() );
+			$this->refresh_locations( $environment );
 		}
 
 	}
@@ -404,15 +459,22 @@ class PMProGateway_square extends PMProGateway {
 		}
 	}
 
-
 	/**
 	 * Runs the webhook creation automatically when payment settings are saved.
 	 */
 	public function create_webhooks_auto() {
 
-		$existing_webhooks = get_option( 'pmpro_square_webhook_' . $this->get_environment() );
+		if ( empty( $_POST['gateway_environment'] ) ) {
+			return;
+		}
+
+		// Get the environment from the POST data to ensure we are using the selected one at the time of saving as it could have been changed.
+		$environment = sanitize_text_field( $_POST['gateway_environment'] );	
+
+		$existing_webhooks = get_option( 'pmpro_square_webhook_' . $environment );
 		if ( empty( $existing_webhooks ) ) {
-			$this->create_webhooks( $this->get_environment() );
+			$this->log( 'No webhooks in ' . $environment . ', creating...' );
+			$this->create_webhooks( $environment );
 		}
 
 	}
@@ -761,6 +823,10 @@ class PMProGateway_square extends PMProGateway {
 	public function enqueue_scripts() {
 		global $gateway, $pmpro_level, $current_user, $pmpro_requirebilling, $pmpro_pages, $pmpro_currency;
 
+		if ( ! $this->is_ready() ) {
+			return;
+		}
+
 		$this->setup();
 
 		// Prep JavaScript vars to work with either CHARGE (new payment) or STORE (update billing card).
@@ -845,10 +911,14 @@ class PMProGateway_square extends PMProGateway {
 					<legend class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_legend' ) ); ?>">
 						<h2 class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_heading pmpro_font-large' ) ); ?>"><?php esc_html_e('Payment Information', 'pmpro-square' ); ?></h2>
 					</legend>
-					<div id="pmpro-square-card-container">
-						<div id="pmpro-square-card-fields"></div>
-						<div id="pmpro-square-status"></div>
-					</div>
+					<?php if ( ! $this->is_ready() ) { ?>
+						<p><?php esc_html_e( 'Payments are not currently available. Please contact site administrator.', 'pmpro-square' ); ?></p>
+					<?php } else { ?>
+						<div id="pmpro-square-card-container">
+							<div id="pmpro-square-card-fields"></div>
+							<div id="pmpro-square-status"></div>
+						</div>
+					<?php } ?>
 				</div> <!-- end pmpro_card_content -->
 			</div> <!-- end pmpro_card -->
 		</fieldset> <!-- end pmpro_payment_information_fields -->

@@ -56,7 +56,7 @@ function pmpro_square_admin_notice() {
 	if ( get_transient( 'pmpro-square-admin-notice' ) ) { 
 	?>
 		<div class="updated notice is-dismissible">
-			<p><?php printf( esc_html__( 'Thank you for activating the Paid Memberships Pro: Square Add On. <a href="%s">Visit the payment settings page</a> to configure the Square Payment Gateway.', 'pmpro-square' ), esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) ); ?></p>
+			<p><?php printf( wp_kses_post( 'Thank you for activating the Paid Memberships Pro: Square Add On. <a href="%s">Visit the payment settings page</a> to configure the Square Payment Gateway.', 'pmpro-square' ), esc_url( get_admin_url( null, 'admin.php?page=pmpro-paymentsettings' ) ) ); ?></p>
 		</div>
 		<?php
 		// Delete transient, only display this notice once.
