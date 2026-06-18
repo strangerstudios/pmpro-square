@@ -40,9 +40,9 @@ class PMProGateway_square extends PMProGateway {
 		add_filter( 'pmpro_gateways', array( $this, 'pmpro_gateways' ));
 		add_filter( 'pmpro_gateways_with_pending_status', array( $this, 'pmpro_gateways_with_pending_status' ) );
 
-		// Add fields to payment settings.
-		add_filter( 'pmpro_payment_options', array( $this, 'pmpro_payment_options' ));
-		add_filter( 'pmpro_payment_option_fields', array( $this, 'pmpro_payment_option_fields' ), 10, 2);
+		// Enable admin-initiated refunds from the order screen.
+		add_filter( 'pmpro_allowed_refunds_gateways', array( 'PMProGateway_square', 'allowed_refund_gateways' ) );
+		add_filter( 'pmpro_process_refund_square', array( 'PMProGateway_square', 'process_refund' ), 10, 2 );
 
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'refresh_locations_auto' ) );
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'create_webhooks_auto' ) );
@@ -133,14 +133,261 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Set payment options for payment settings page.
 	 */
-	public function pmpro_payment_options( $options ) {
+	public static function pmpro_payment_options( $options ) {
 		//get square options
-		$square_options = $this->getGatewayOptions();
+		$square_options = self::getGatewayOptions();
 
 		//merge with others.
 		$options = array_merge( $square_options, $options );
 
 		return $options;
+	}
+
+	/**
+	 * Description shown for this gateway on the Payment Settings page.
+	 *
+	 * @since TBD
+	 *
+	 * @return string The gateway description.
+	 */
+	public static function get_description_for_gateway_settings() {
+		return esc_html__( 'Accept credit card, debit card, and digital wallet payments with Square. Square offers secure online checkout and competitive transaction pricing.', 'pmpro-square' );
+	}
+
+	/**
+	 * Display this gateway's settings fields on the Payment Settings page.
+	 *
+	 * Overrides the base gateway method (PMPro 3.5+) so the fields render
+	 * natively instead of relying on the legacy pmpro_payment_option_fields
+	 * filter and its compatibility shim.
+	 *
+	 * @since TBD
+	 */
+	public static function show_settings_fields() {
+		// Build the values array from saved options.
+		$values = array();
+		foreach ( self::getGatewayOptions() as $key ) {
+			$values[ $key ] = get_option( 'pmpro_' . $key );
+		}
+
+		$sandbox_locations = get_option( 'pmpro_square_locations_sandbox' );
+		$live_locations    = get_option( 'pmpro_square_locations_live' );
+		$sandbox_webhook   = get_option( 'pmpro_square_webhook_sandbox' );
+		$live_webhook      = get_option( 'pmpro_square_webhook_live' );
+		?>
+		<div id="pmpro_square_sandbox" class="pmpro_section" data-visibility="shown" data-activated="true">
+			<div class="pmpro_section_toggle">
+				<button class="pmpro_section-toggle-button" type="button" aria-expanded="true">
+					<span class="dashicons dashicons-arrow-up-alt2"></span>
+					<?php esc_html_e( 'Square Sandbox Settings', 'pmpro-square' ); ?>
+				</button>
+			</div>
+			<div class="pmpro_section_inside">
+				<table class="form-table">
+					<tbody>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_sandbox_application_id"><?php esc_html_e( 'Sandbox Application ID', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<input type="text" id="square_sandbox_application_id" name="square_sandbox_application_id" size="60" value="<?php echo esc_attr( $values['square_sandbox_application_id'] ); ?>" />
+								<p class="description"><?php esc_html_e( 'Enter the Application ID from Square.', 'pmpro-square' ); ?></p>
+							</td>
+						</tr>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_sandbox_access_token"><?php esc_html_e( 'Sandbox Access Token', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<input type="text" id="square_sandbox_access_token" name="square_sandbox_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_sandbox_personal_access_token'] ); ?>" autocomplete="off" class="pmpro-admin-secure-key" />
+								<p class="description"><?php esc_html_e( 'Enter the Access Token from Square.', 'pmpro-square' ); ?></p>
+							</td>
+						</tr>
+						<?php if ( ! empty( $values['square_sandbox_personal_access_token'] ) ) { ?>
+							<tr class="gateway gateway_square">
+								<th scope="row" valign="top">
+									<label for="square_sandbox_location_id"><?php esc_html_e( 'Sandbox Location', 'pmpro-square' ); ?></label>
+								</th>
+								<td>
+									<select id="square_sandbox_location_id" name="square_sandbox_location_id">
+										<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
+										<?php
+										if ( ! empty( $sandbox_locations ) ) {
+											foreach ( $sandbox_locations as $id => $name ) {
+												echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_sandbox_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
+											}
+										}
+										?>
+									</select>
+									<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ) ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' ); ?></a>
+									<p class="description"><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' ); ?></p>
+								</td>
+							</tr>
+							<tr class="gateway gateway_square">
+								<th scope="row" valign="top">
+									<label for="square_sandbox_webhooks"><?php esc_html_e( 'Sandbox Webhooks', 'pmpro-square' ); ?></label>
+								</th>
+								<td>
+									<?php if ( $sandbox_webhook ) { ?>
+										<div class="notice notice-success inline"><p>
+											<?php echo esc_html( implode( ', ', $sandbox_webhook['event_types'] ) ); ?>
+											<br /><a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=sandbox' ), 'pmpro_square_disable_webhooks' ) ); ?>"><?php esc_html_e( 'Disable webhooks', 'pmpro-square' ); ?></a>
+										</p></div>
+									<?php } else { ?>
+										<p><a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) ); ?>" class="button"><?php esc_html_e( 'Generate webhooks', 'pmpro-square' ); ?></a></p>
+										<p><?php esc_html_e( 'Webhook URL', 'pmpro-square' ); ?>: <code><?php echo esc_html( self::get_webhook_url() ); ?></code></p>
+									<?php } ?>
+								</td>
+							</tr>
+						<?php } ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<div id="pmpro_square_live" class="pmpro_section" data-visibility="shown" data-activated="true">
+			<div class="pmpro_section_toggle">
+				<button class="pmpro_section-toggle-button" type="button" aria-expanded="true">
+					<span class="dashicons dashicons-arrow-up-alt2"></span>
+					<?php esc_html_e( 'Square Live Settings', 'pmpro-square' ); ?>
+				</button>
+			</div>
+			<div class="pmpro_section_inside">
+				<table class="form-table">
+					<tbody>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_live_application_id"><?php esc_html_e( 'Live Application ID', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<input type="text" id="square_live_application_id" name="square_live_application_id" size="60" value="<?php echo esc_attr( $values['square_live_application_id'] ); ?>" />
+								<p class="description"><?php esc_html_e( 'Enter the Application ID from Square.', 'pmpro-square' ); ?></p>
+							</td>
+						</tr>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_live_access_token"><?php esc_html_e( 'Live Access Token', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<input type="text" id="square_live_access_token" name="square_live_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_live_personal_access_token'] ); ?>" autocomplete="off" class="pmpro-admin-secure-key" />
+								<p class="description"><?php esc_html_e( 'Enter the Access Token from Square.', 'pmpro-square' ); ?></p>
+							</td>
+						</tr>
+						<?php if ( ! empty( $values['square_live_personal_access_token'] ) ) { ?>
+							<tr class="gateway gateway_square">
+								<th scope="row" valign="top">
+									<label for="square_live_location_id"><?php esc_html_e( 'Live Location', 'pmpro-square' ); ?></label>
+								</th>
+								<td>
+									<select id="square_live_location_id" name="square_live_location_id">
+										<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
+										<?php
+										if ( ! empty( $live_locations ) ) {
+											foreach ( $live_locations as $id => $name ) {
+												echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_live_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
+											}
+										}
+										?>
+									</select>
+									<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ) ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' ); ?></a>
+									<p class="description"><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' ); ?></p>
+								</td>
+							</tr>
+							<tr class="gateway gateway_square">
+								<th scope="row" valign="top">
+									<label for="square_live_webhooks"><?php esc_html_e( 'Live Webhooks', 'pmpro-square' ); ?></label>
+								</th>
+								<td>
+									<?php if ( $live_webhook ) { ?>
+										<div class="notice notice-success inline"><p>
+											<?php echo esc_html( implode( ', ', $live_webhook['event_types'] ) ); ?>
+											<br /><a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=live' ), 'pmpro_square_disable_webhooks' ) ); ?>"><?php esc_html_e( 'Disable webhooks', 'pmpro-square' ); ?></a>
+										</p></div>
+									<?php } else { ?>
+										<p><a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) ); ?>" class="button"><?php esc_html_e( 'Generate webhooks', 'pmpro-square' ); ?></a></p>
+										<p><?php esc_html_e( 'Webhook URL', 'pmpro-square' ); ?>: <code><?php echo esc_html( self::get_webhook_url() ); ?></code></p>
+									<?php } ?>
+								</td>
+							</tr>
+						<?php } ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<div id="pmpro_square_other" class="pmpro_section" data-visibility="shown" data-activated="true">
+			<div class="pmpro_section_toggle">
+				<button class="pmpro_section-toggle-button" type="button" aria-expanded="true">
+					<span class="dashicons dashicons-arrow-up-alt2"></span>
+					<?php esc_html_e( 'Other Square Settings', 'pmpro-square' ); ?>
+				</button>
+			</div>
+			<div class="pmpro_section_inside">
+				<table class="form-table">
+					<tbody>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<select id="square_billingaddress" name="square_billingaddress">
+									<option value="0" <?php selected( empty( $values['square_billingaddress'] ) ); ?>><?php esc_html_e( 'No', 'pmpro-square' ); ?></option>
+									<option value="1" <?php selected( ! empty( $values['square_billingaddress'] ) ); ?>><?php esc_html_e( 'Yes', 'pmpro-square' ); ?></option>
+								</select>
+								<p class="description"><?php esc_html_e( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'pmpro-square' ); ?></p>
+							</td>
+						</tr>
+						<tr class="gateway gateway_square">
+							<th scope="row" valign="top">
+								<label for="square_log"><?php esc_html_e( 'Logging', 'pmpro-square' ); ?></label>
+							</th>
+							<td>
+								<label><input type="checkbox" id="square_log" name="square_log" value="yes" <?php checked( 'yes', $values['square_log'] ); ?> /> <?php esc_html_e( 'Enable logging of all Square events', 'pmpro-square' ); ?></label>
+								<?php
+								if ( ! empty( $values['square_log'] ) ) {
+									$log_file_name = get_option( 'pmpro_square_log_file_name' );
+									if ( ! empty( $log_file_name ) ) {
+										$uploads = wp_upload_dir();
+										?>
+										<br /><br /><a href="<?php echo esc_url( trailingslashit( $uploads['baseurl'] ) . $log_file_name ); ?>" target="_blank" class="button"><?php esc_html_e( 'View log file', 'pmpro-square' ); ?></a>
+										<?php
+									}
+								}
+								?>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Save this gateway's settings fields from the Payment Settings page.
+	 *
+	 * Overrides the base gateway method (PMPro 3.5+). Only saves options
+	 * specific to this gateway; global options (gateway, environment,
+	 * currency, tax, etc.) are saved by PMPro core on the main settings page.
+	 *
+	 * @since TBD
+	 */
+	public static function save_settings_fields() {
+		// Options that are global to all gateways and saved elsewhere by core.
+		$global_options = array(
+			'sslseal',
+			'nuclear_HTTPS',
+			'gateway_environment',
+			'currency',
+			'use_ssl',
+			'tax_state',
+			'tax_rate',
+		);
+
+		foreach ( self::getGatewayOptions() as $option ) {
+			if ( in_array( $option, $global_options, true ) ) {
+				continue;
+			}
+			pmpro_setOption( $option );
+		}
 	}
 
 	/**
@@ -340,7 +587,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Build URL for the webhook.
 	 */
-	public function get_webhook_url() {
+	public static function get_webhook_url() {
 		return admin_url( 'admin-ajax.php' ) . '?action=pmpro_square_webhook';
 	}
 
@@ -583,180 +830,6 @@ class PMProGateway_square extends PMProGateway {
 			
 	}
 
-
-	/**
-	 * Display fields for this gateway's options.
-	 */
-	public function pmpro_payment_option_fields( $values, $gateway ) {
-	?>
-	<tr class="pmpro_settings_divider gateway gateway_square" style="">
-		<td colspan="2">
-			<hr>
-			<h2><?php esc_html_e( 'Square Sandbox Settings', 'pmpro-square' ); ?></h2>
-		</td>
-	</tr>	
-	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-		<th scope="row" valign="top">
-			<label for="square_sandbox_application_id"><?php esc_html_e( 'Sandbox Application ID', 'pmpro-square' ); ?>:</label>
-		</th>
-		<td>
-			<input type="text" id="square_sandbox_application_id" name="square_sandbox_application_id" size="60" value="<?php echo esc_attr( $values['square_sandbox_application_id'] ); ?>" />
-			<br /><small><?php esc_html_e( 'Enter the Application ID from Square', 'pmpro-square' );?></small>
-		</td>
-	</tr>
-	<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-		<th scope="row" valign="top">
-			<label for="square_sandbox_personal_access_token"><?php esc_html_e( 'Sandbox Access Token', 'pmpro-square' ); ?>:</label>
-		</th>
-		<td>
-			<input type="text" id="square_sandbox_access_token" name="square_sandbox_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_sandbox_personal_access_token'] ); ?>" />
-			<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
-		</td>
-	</tr>
-
-	<?php if ( ! empty( $values['square_sandbox_personal_access_token'] ) ) { ?>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_sandbox_location_id"><?php esc_html_e( 'Sandbox Location', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<select id="square_sandbox_location_id" name="square_sandbox_location_id">
-					<option value=""><?php esc_html_e( 'Default location', 'pmpro-square' ); ?></option>
-					<?php
-					$locations = get_option( 'pmpro_square_locations_sandbox' );
-					if ( ! empty( $locations ) ) {
-						foreach ( $locations as $id => $name ) {
-							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_sandbox_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
-						}
-					}
-					?>
-				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=sandbox' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
-				<br /><small><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' );?></small>
-			</td>
-		</tr>
-		<tr class="gateway gateway_square gateway_square_sandbox" <?php if ( $gateway != "square" || $values['gateway_environment'] != 'sandbox' ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row">
-				<label for="square_sandbox_webhooks"><?php esc_html_e( 'Sandbox Webhooks', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<?php
-				$webhook = get_option( 'pmpro_square_webhook_sandbox' );
-				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>';
-					esc_html_e( join( ', ', $webhook['event_types'] ) );
-					echo '<br><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=sandbox' ), 'pmpro_square_disable_webhooks' ) . '">' . esc_html__( 'Disable webhooks', 'pmpro-square' ) . '</a>';
-					echo '</p></div>';
-				} else {
-					echo '<p><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=sandbox' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a></p>';
-					echo '<p>' . __( 'Webhook URL', 'pmpro-square' ) . ': <code>' . $this->get_webhook_url() . '</code></p>';
-				}
-				?>
-			</td>
-		</tr>
-	<?php } ?>
-
-	<tr class="pmpro_settings_divider gateway gateway_square" style="">
-		<td colspan="2">
-			<hr>
-			<h2><?php esc_html_e( 'Square Live Settings', 'pmpro-square' ); ?></h2>
-		</td>
-	</tr>	
-	<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?> >
-		<th scope="row" valign="top">
-			<label for="square_live_application_id"><?php esc_html_e( 'Live Application ID', 'pmpro-square' ); ?>:</label>
-		</th>
-		<td>
-			<input type="text" id="square_live_application_id" name="square_live_application_id" size="60" value="<?php echo esc_attr( $values['square_live_application_id'] ); ?>" />
-			<br /><small><?php esc_html_e( 'Enter the Application ID from Square', 'pmpro-square' );?></small>
-		</td>
-	</tr>
-	<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?> >
-		<th scope="row" valign="top">
-			<label for="square_live_personal_access_token"><?php esc_html_e( 'Live Access Token', 'pmpro-square' ); ?>:</label>
-		</th>
-		<td>
-			<input type="text" id="square_live_personal_access_token" name="square_live_personal_access_token" size="60" value="<?php echo esc_attr( $values['square_live_personal_access_token'] ); ?>" />
-			<br /><small><?php esc_html_e( 'Enter the access token ID from Square', 'pmpro-square' );?></small>
-		</td>
-	</tr>
-
-	<?php if ( ! empty( $values['square_live_personal_access_token'] ) ) { ?>
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_live_location_id"><?php esc_html_e( 'Live Location', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-				<select id="square_live_location_id" name="square_live_location_id">
-					<option value=""><?php esc_html_e( 'Default Location', 'pmpro-square' ); ?></option>
-					<?php
-					$locations = get_option( 'pmpro_square_locations_live' );
-					if ( ! empty( $locations ) ) {
-						foreach ( $locations as $id => $name ) {
-							echo '<option value="' . esc_attr( $id ) . '" ' . selected( $id, $values['square_live_location_id'], false ) . '>' . esc_html( $name ) . '</option>';
-						}
-					}
-					?>
-				</select>
-				<a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_refresh_locations=live' ), 'pmpro_square_refresh_locations' ); ?>" class="button"><?php esc_html_e( 'Refresh locations', 'pmpro-square' );?></a>
-				<br /><small><?php esc_html_e( 'A location is where your transactions occur. Select "Default Location" if you are not sure.', 'pmpro-square' );?></small>
-			</td>
-		</tr>
-		<tr class="gateway gateway_square gateway_square_live" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?> >
-			<th scope="row" valign="top">
-				<label for="square_live_webhooks"><?php esc_html_e( 'Live Webhooks', 'pmpro-square' ); ?>:</label>
-			</th>
-			<td>
-			<?php
-				$webhook = get_option( 'pmpro_square_webhook_live' );
-				if ( $webhook ) {
-					echo '<div class="notice notice-success inline"><p>';
-					esc_html_e( join( ', ', $webhook['event_types'] ) );
-					echo '<br><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_disable_webhooks=live' ), 'pmpro_square_disable_webhooks' ) . '">' . esc_html__( 'Disable webhooks', 'pmpro-square' ) . '</a>';
-					echo '</p></div>';
-				} else {
-					echo '<p><a href="' . wp_nonce_url( admin_url( 'admin.php?page=pmpro-paymentsettings&pmpro_square_webhooks=live' ), 'pmpro_square_webhooks' ) . '" class="button">' . esc_html__( 'Generate webhooks', 'pmpro-square' ) . '</a></p>';
-					echo '<p>' . __( 'Webhook URL', 'pmpro-square' ) . ': <code>' . $this->get_webhook_url() . '</code></p>';
-				}
-				?>
-			</td>
-		</tr>
-	<?php } ?>
-	
-	<tr class="pmpro_settings_divider gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
-		<td colspan="2">
-			<hr />
-			<h2><?php esc_html_e( 'Other Square Settings', 'pmpro-square' ); ?></h2>
-		</td>
-	</tr>
-	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
-		<th scope="row" valign="top">
-			<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'pmpro-square' ); ?></label>
-		</th>
-		<td>
-			<select id="square_billingaddress" name="square_billingaddress">
-				<option value="0"
-						<?php if ( empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'No', 'pmpro-square' ); ?></option>
-				<option value="1"
-						<?php if ( ! empty( $values['square_billingaddress'] ) ) { ?>selected="selected"<?php } ?>><?php esc_html_e( 'Yes', 'pmpro-square' ); ?></option>
-			</select>
-			<p class="description"><?php esc_html_e( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'pmpro-square' ); ?></p>
-		</td>
-	</tr>
-	<tr class="gateway gateway_square" <?php if ( $gateway != "square" ) { ?>style="display: none;"<?php } ?>>
-		<th scope="row" valign="top">
-			<label for="square_log"><?php esc_html_e( 'Logging', 'pmpro-square' ); ?></label>
-		</th>
-		<td>
-			<label><input type="checkbox" name="square_log" <?php checked( 'yes', $values['square_log'] ); ?> value="yes"> <?php _e( 'Enable logging of all Square events', 'pmpro-square' ); ?></label>
-			<?php if ( ! empty( $values['square_log'] ) ) { ?>
-				<?php $log_file_name = get_option( 'pmpro_square_log_file_name' ); ?>
-				<br><br><a href="../wp-content/uploads/<?php echo esc_attr( $log_file_name ); ?>" target="_blank" class="button"><?php esc_html_e( 'View log file', 'pmpro-square' ); ?></a>
-			<?php } ?>
-		</td>
-	</tr>
-	<?php
-	}
 
 	public function enqueue_scripts() {
 		global $gateway, $pmpro_level, $current_user, $pmpro_requirebilling, $pmpro_pages, $pmpro_currency;
@@ -1656,6 +1729,13 @@ class PMProGateway_square extends PMProGateway {
 
 		$this->setup();
 
+		// Bail gracefully if the API client could not be configured (e.g. missing
+		// credentials) so a sync attempt never fatals.
+		if ( empty( $this->client ) ) {
+			$this->log( 'Could not sync subscription - Square API client is not configured.' );
+			return __( 'Square API client is not configured.', 'pmpro-square' );
+		}
+
 		$api_response = $this->client->getSubscriptionsApi()->retrieveSubscription( $subscription_id );
 
 		if ($api_response->isSuccess()) {
@@ -1710,7 +1790,15 @@ class PMProGateway_square extends PMProGateway {
 				}
 
 				$update_array['billing_amount'] = (float) $last_phase->getPricing()->getPriceMoney()->getAmount() / 100;
-		
+
+				// A per-subscription price override (e.g. set by editing the price of this
+				// subscription in the Square dashboard) takes precedence over the shared plan
+				// variation's price. Square stores this as a flat amount on the subscription.
+				$price_override = $square_subscription->getPriceOverrideMoney();
+				if ( ! empty( $price_override ) && null !== $price_override->getAmount() ) {
+					$update_array['billing_amount'] = (float) $price_override->getAmount() / 100;
+				}
+
 			} else {
 				$errors = $api_response->getErrors();
 				$this->log( 'Failed syncing subscription - getting plan variation: ' . print_r( $errors, 1 ) );
@@ -1727,6 +1815,114 @@ class PMProGateway_square extends PMProGateway {
 			return print_r( $errors, 1 );
 		}
 		return false;
+	}
+
+	/**
+	 * Add Square to the list of gateways that support admin-initiated refunds.
+	 *
+	 * @since TBD
+	 *
+	 * @param array $gateways Gateways that support refunds.
+	 * @return array
+	 */
+	public static function allowed_refund_gateways( $gateways ) {
+		if ( ! in_array( 'square', $gateways, true ) ) {
+			$gateways[] = 'square';
+		}
+		return $gateways;
+	}
+
+	/**
+	 * Process a refund for an order at Square (admin-initiated, from the order screen).
+	 *
+	 * Refunds the full order total against the order's Square payment. The order's
+	 * payment_transaction_id is a Square payment ID for one-time payments, or a Square
+	 * order ID for recurring orders recorded via webhook - we resolve the latter to a
+	 * payment ID before refunding.
+	 *
+	 * @since TBD
+	 *
+	 * @param bool        $success Whether a refund has already been processed.
+	 * @param MemberOrder $order   The order to refund.
+	 * @return bool
+	 */
+	public static function process_refund( $success, $order ) {
+		// Another callback already handled this refund.
+		if ( $success ) {
+			return $success;
+		}
+
+		if ( empty( $order->payment_transaction_id ) ) {
+			$order->add_order_note( __( 'Admin: Could not process refund. No payment transaction ID found on this order.', 'pmpro-square' ) );
+			return false;
+		}
+
+		$gateway = new self();
+		$gateway->setup();
+		if ( empty( $gateway->client ) ) {
+			$order->add_order_note( __( 'Admin: Could not process refund. The Square API client is not configured.', 'pmpro-square' ) );
+			return false;
+		}
+
+		// Resolve the Square payment ID. One-time payments store the payment ID directly;
+		// recurring orders store the Square order ID, which we resolve to its payment ID.
+		$payment_id = $order->payment_transaction_id;
+		$order_response = $gateway->client->getOrdersApi()->retrieveOrder( $order->payment_transaction_id );
+		if ( $order_response->isSuccess() ) {
+			$tenders = $order_response->getResult()->getOrder()->getTenders();
+			if ( ! empty( $tenders ) && ! empty( $tenders[0]->getPaymentId() ) ) {
+				$payment_id = $tenders[0]->getPaymentId();
+			}
+		}
+
+		// Refund the full order total. Square works in the smallest currency unit (cents).
+		global $pmpro_currency, $current_user;
+		$amount_money = new \Square\Models\Money();
+		$amount_money->setAmount( (int) round( (float) $order->total * 100 ) );
+		$amount_money->setCurrency( ! empty( $pmpro_currency ) ? $pmpro_currency : 'USD' );
+
+		$body = new \Square\Models\RefundPaymentRequest( $gateway->get_idempotency_key(), $amount_money );
+		$body->setPaymentId( $payment_id );
+		$body->setReason( __( 'Refund issued from Paid Memberships Pro.', 'pmpro-square' ) );
+
+		$api_response = $gateway->client->getRefundsApi()->refundPayment( $body );
+
+		if ( ! $api_response->isSuccess() ) {
+			$errors = $api_response->getErrors();
+			$detail = ! empty( $errors[0] ) ? $errors[0]->getDetail() : __( 'Unknown error.', 'pmpro-square' );
+			$order->add_order_note( sprintf( __( 'Admin: Square refund failed. %s', 'pmpro-square' ), $detail ) );
+			$order->saveOrder();
+			$gateway->log( 'Refund failed for order #' . $order->id . ': ' . print_r( $errors, 1 ) );
+			return false;
+		}
+
+		$refund = $api_response->getResult()->getRefund();
+		$status = $refund->getStatus();
+
+		// A FAILED/REJECTED refund is not a success.
+		if ( in_array( $status, array( 'FAILED', 'REJECTED' ), true ) ) {
+			$order->add_order_note( sprintf( __( 'Admin: Square refund was %1$s. Refund ID: %2$s', 'pmpro-square' ), $status, $refund->getId() ) );
+			$order->saveOrder();
+			return false;
+		}
+
+		// Mark the order refunded immediately (PENDING refunds finalize asynchronously via
+		// the refund webhook). Saving now also prevents the webhook from sending a duplicate
+		// refund email, thanks to its "already refunded" guard.
+		$order->status = 'refunded';
+		$order->saveOrder();
+
+		$order->add_order_note( sprintf( __( 'Admin: Order successfully refunded at Square by %1$s. Refund ID: %2$s (status: %3$s).', 'pmpro-square' ), $current_user->display_name, $refund->getId(), $status ) );
+
+		// Notify the member and the admin.
+		$user = get_user_by( 'id', $order->user_id );
+		$myemail = new PMProEmail();
+		$myemail->sendRefundedEmail( $user, $order );
+		$myemail = new PMProEmail();
+		$myemail->sendRefundedAdminEmail( $user, $order );
+
+		$gateway->log( 'Refund created for order #' . $order->id . ': ' . $refund->getId() . ' status=' . $status );
+		return true;
 	}
 
 	/**
