@@ -44,6 +44,9 @@ class PMProGateway_square extends PMProGateway {
 		add_filter( 'pmpro_allowed_refunds_gateways', array( 'PMProGateway_square', 'allowed_refund_gateways' ) );
 		add_filter( 'pmpro_process_refund_square', array( 'PMProGateway_square', 'process_refund' ), 10, 2 );
 
+		// Clear cached plan variations if the Square Application ID changes.
+		add_action( 'admin_init', array( $this, 'maybe_change_app_id' ) );
+
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'refresh_locations_auto' ) );
 		add_action( 'pmpro_after_saved_payment_options', array( $this, 'create_webhooks_auto' ) );
 
@@ -427,7 +430,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Check if we have the basic necessary data to make an API connection.
 	 */
-	private function is_ready( $ready = false ){
+	private function is_ready() {
 
 		$environment = get_option( 'pmpro_gateway_environment' );
 		if ( $environment == 'live' ) {
@@ -516,6 +519,63 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
+	 * When the payment settings are saved, clear cached subscription plans and plan
+	 * variations for any environment whose Square Application ID has changed. The old
+	 * catalog objects belong to a different Square account/application and can no longer
+	 * be used, so they must be recreated on the next checkout.
+	 *
+	 * @since TBD
+	 */
+	public function maybe_change_app_id() {
+
+		// Only act when the payment settings are being saved.
+		if ( empty( $_REQUEST['savesettings'] ) ) {
+			return;
+		}
+
+		// Check permissions.
+		if ( ! function_exists( 'current_user_can' ) || ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'pmpro_paymentsettings' ) ) ) {
+			return;
+		}
+
+		// Verify the settings nonce.
+		if ( empty( $_REQUEST['pmpro_paymentsettings_nonce'] ) || ! check_admin_referer( 'savesettings', 'pmpro_paymentsettings_nonce' ) ) {
+			return;
+		}
+
+		// Compare each saved Application ID to the submitted value (this runs before the new
+		// values are saved, so get_option() still holds the previous Application ID).
+		$sandbox_app_id     = get_option( 'pmpro_square_sandbox_application_id' );
+		$new_sandbox_app_id = isset( $_REQUEST['square_sandbox_application_id'] ) ? sanitize_text_field( $_REQUEST['square_sandbox_application_id'] ) : '';
+		if ( $sandbox_app_id && $sandbox_app_id !== $new_sandbox_app_id ) {
+			$this->clear_plan_variations( 'sandbox' );
+		}
+
+		$live_app_id     = get_option( 'pmpro_square_live_application_id' );
+		$new_live_app_id = isset( $_REQUEST['square_live_application_id'] ) ? sanitize_text_field( $_REQUEST['square_live_application_id'] ) : '';
+		if ( $live_app_id && $live_app_id !== $new_live_app_id ) {
+			$this->clear_plan_variations( 'live' );
+		}
+	}
+
+	/**
+	 * Clear the cached subscription plan and plan variations for an environment.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $environment The gateway environment ('sandbox' or 'live').
+	 */
+	private function clear_plan_variations( $environment ) {
+		$this->log( 'Clearing cached subscription plans/variations for ' . $environment );
+
+		$levels = pmpro_getAllLevels( true, true );
+		foreach ( $levels as $level ) {
+			delete_option( 'pmpro_square_subscription_plan_variations_' . $environment . '_' . $level->id );
+			delete_option( 'pmpro_square_subscription_plan_id_' . $environment . '_' . $level->id );
+		}
+	}
+
+	/**
 	 * Refreshes the list of available locations for an environment on a manual request.
 	 */
 	public function refresh_locations_manual() {
@@ -550,10 +610,14 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function refresh_locations_auto() {
 
-		$existing_locations = get_option( 'pmpro_square_locations_' . $this->get_environment() );
+		// Use the environment posted with the settings save when present (it may have just
+		// been changed); otherwise fall back to the saved gateway environment.
+		$environment = ! empty( $_POST['gateway_environment'] ) ? sanitize_text_field( $_POST['gateway_environment'] ) : $this->get_environment();
+
+		$existing_locations = get_option( 'pmpro_square_locations_' . $environment );
 
 		if ( empty( $existing_locations ) ) {
-			$this->refresh_locations( $this->get_environment() );
+			$this->refresh_locations( $environment );
 		}
 
 	}
@@ -657,9 +721,14 @@ class PMProGateway_square extends PMProGateway {
 	 */
 	public function create_webhooks_auto() {
 
-		$existing_webhooks = get_option( 'pmpro_square_webhook_' . $this->get_environment() );
+		// Use the environment posted with the settings save when present (it may have just
+		// been changed); otherwise fall back to the saved gateway environment.
+		$environment = ! empty( $_POST['gateway_environment'] ) ? sanitize_text_field( $_POST['gateway_environment'] ) : $this->get_environment();
+
+		$existing_webhooks = get_option( 'pmpro_square_webhook_' . $environment );
 		if ( empty( $existing_webhooks ) ) {
-			$this->create_webhooks( $this->get_environment() );
+			$this->log( 'No webhooks in ' . $environment . ', creating...' );
+			$this->create_webhooks( $environment );
 		}
 
 	}
@@ -834,6 +903,11 @@ class PMProGateway_square extends PMProGateway {
 	public function enqueue_scripts() {
 		global $gateway, $pmpro_level, $current_user, $pmpro_requirebilling, $pmpro_pages, $pmpro_currency;
 
+		// Don't enqueue Square's scripts if the gateway isn't configured.
+		if ( ! $this->is_ready() ) {
+			return;
+		}
+
 		$this->setup();
 
 		// Prep JavaScript vars to work with either CHARGE (new payment) or STORE (update billing card).
@@ -918,10 +992,16 @@ class PMProGateway_square extends PMProGateway {
 					<legend class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_legend' ) ); ?>">
 						<h2 class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_heading pmpro_font-large' ) ); ?>"><?php esc_html_e('Payment Information', 'pmpro-square' ); ?></h2>
 					</legend>
-					<div id="pmpro-square-card-container">
-						<div id="pmpro-square-card-fields"></div>
-						<div id="pmpro-square-status"></div>
-					</div>
+					<?php if ( $this->is_ready() ) { ?>
+						<div id="pmpro-square-card-container">
+							<div id="pmpro-square-card-fields"></div>
+							<div id="pmpro-square-status"></div>
+						</div>
+					<?php } elseif ( current_user_can( 'manage_options' ) ) { ?>
+						<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_message pmpro_error' ) ); ?>">
+							<?php esc_html_e( 'Square is not fully configured, so the payment fields cannot be displayed. This message is only shown to administrators. Please complete the Square gateway settings.', 'pmpro-square' ); ?>
+						</div>
+					<?php } ?>
 				</div> <!-- end pmpro_card_content -->
 			</div> <!-- end pmpro_card -->
 		</fieldset> <!-- end pmpro_payment_information_fields -->
