@@ -568,7 +568,7 @@ class PMProGateway_square extends PMProGateway {
 	private function clear_plan_variations( $environment ) {
 		$this->log( 'Clearing cached subscription plans/variations for ' . $environment );
 
-		$levels = pmpro_getAllLevels( true, true );
+		$levels = pmpro_getAllLevels( true );
 		foreach ( $levels as $level ) {
 			delete_option( 'pmpro_square_subscription_plan_variations_' . $environment . '_' . $level->id );
 			delete_option( 'pmpro_square_subscription_plan_id_' . $environment . '_' . $level->id );
@@ -1933,14 +1933,18 @@ class PMProGateway_square extends PMProGateway {
 		}
 
 		if ( empty( $order->payment_transaction_id ) ) {
-			$order->add_order_note( __( 'Admin: Could not process refund. No payment transaction ID found on this order.', 'pmpro-square' ) );
+			if ( method_exists( $order, 'add_order_note' ) ) {
+				$order->add_order_note( __( 'Admin: Could not process refund. No payment transaction ID found on this order.', 'pmpro-square' ) );
+			}
 			return false;
 		}
 
 		$gateway = new self();
 		$gateway->setup();
 		if ( empty( $gateway->client ) ) {
-			$order->add_order_note( __( 'Admin: Could not process refund. The Square API client is not configured.', 'pmpro-square' ) );
+			if ( method_exists( $order, 'add_order_note' ) ) {
+				$order->add_order_note( __( 'Admin: Could not process refund. The Square API client is not configured.', 'pmpro-square' ) );
+			}
 			return false;
 		}
 
@@ -1970,8 +1974,10 @@ class PMProGateway_square extends PMProGateway {
 		if ( ! $api_response->isSuccess() ) {
 			$errors = $api_response->getErrors();
 			$detail = ! empty( $errors[0] ) ? $errors[0]->getDetail() : __( 'Unknown error.', 'pmpro-square' );
-			$order->add_order_note( sprintf( __( 'Admin: Square refund failed. %s', 'pmpro-square' ), $detail ) );
-			$order->saveOrder();
+			if ( method_exists( $order, 'add_order_note' ) ) {
+				$order->add_order_note( sprintf( __( 'Admin: Square refund failed. %s', 'pmpro-square' ), $detail ) );
+				$order->saveOrder();
+			}
 			$gateway->log( 'Refund failed for order #' . $order->id . ': ' . print_r( $errors, 1 ) );
 			return false;
 		}
@@ -1981,8 +1987,10 @@ class PMProGateway_square extends PMProGateway {
 
 		// A FAILED/REJECTED refund is not a success.
 		if ( in_array( $status, array( 'FAILED', 'REJECTED' ), true ) ) {
-			$order->add_order_note( sprintf( __( 'Admin: Square refund was %1$s. Refund ID: %2$s', 'pmpro-square' ), $status, $refund->getId() ) );
-			$order->saveOrder();
+			if ( method_exists( $order, 'add_order_note' ) ) {
+				$order->add_order_note( sprintf( __( 'Admin: Square refund was %1$s. Refund ID: %2$s', 'pmpro-square' ), $status, $refund->getId() ) );
+				$order->saveOrder();
+			}
 			return false;
 		}
 
@@ -1990,9 +1998,10 @@ class PMProGateway_square extends PMProGateway {
 		// the refund webhook). Saving now also prevents the webhook from sending a duplicate
 		// refund email, thanks to its "already refunded" guard.
 		$order->status = 'refunded';
+		if ( method_exists( $order, 'add_order_note' ) ) {
+			$order->add_order_note( sprintf( __( 'Admin: Order successfully refunded at Square by %1$s. Refund ID: %2$s (status: %3$s).', 'pmpro-square' ), $current_user->display_name, $refund->getId(), $status ) );
+		}
 		$order->saveOrder();
-
-		$order->add_order_note( sprintf( __( 'Admin: Order successfully refunded at Square by %1$s. Refund ID: %2$s (status: %3$s).', 'pmpro-square' ), $current_user->display_name, $refund->getId(), $status ) );
 
 		// Notify the member and the admin.
 		$user = get_user_by( 'id', $order->user_id );

@@ -322,6 +322,7 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 		// Partial refund - leave membership active, just record a note (mirrors Stripe).
 		if ( method_exists( $order, 'add_order_note' ) ) {
 			$order->add_order_note( sprintf( __( 'Partial refund of %s processed at Square. Refund ID: %s', 'pmpro-square' ), pmpro_formatPrice( $refund_amount ), $refund['id'] ) );
+			$order->saveOrder();
 		}
 		pmpro_square_webhook_log( 'Partial refund of ' . $refund_amount . ' recorded for order ID #' . $order->id . '.' );
 		pmpro_square_webhook_exit();
@@ -329,11 +330,10 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 	// Full refund - mark the order refunded.
 	$order->status = 'refunded';
-	$order->saveOrder();
-
 	if ( method_exists( $order, 'add_order_note' ) ) {
 		$order->add_order_note( sprintf( __( 'Refund processed at Square. Refund ID: %s', 'pmpro-square' ), $refund['id'] ) );
 	}
+	$order->saveOrder();
 
 	// Notify the member and the site admin.
 	$user = get_userdata( $order->user_id );
