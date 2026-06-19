@@ -245,18 +245,107 @@ if ( $webhook['type'] === 'invoice.payment_made' ) {
 
 } elseif ( $webhook['type'] === 'subscription.updated' ) {
 
-	// Looking for a cancellation here.
 	$subscription = $webhook['data']['object']['subscription'];
 
 	pmpro_square_webhook_log( 'Webhook received: subscription.updated. Subscription transaction ID = ' . $subscription['id'] . ', Status = ' . $subscription['status'] );
 	pmpro_square_webhook_log( $subscription );
 
+	// If "sandbox" is in the app id, we are in sandbox mode for this subscription.
+	$environment = ( str_contains( $subscription['source']['application_id'], 'sandbox' ) ) ? 'sandbox' : 'live';
+
 	if ( $subscription['status'] == 'CANCELED' ) {
-		$environment = ( str_contains( $subscription['source']['application_id'], 'sandbox' ) ) ? 'sandbox' : 'live'; // If "sandbox" is in the app id, we are in sandbox mode for this subscription.
-		$result = pmpro_handle_subscription_cancellation_at_gateway( $subscription['id'], 'square', $environment );
-		pmpro_square_webhook_log( 'Cancelled membership for user with ID = ' . $user->ID . '. Subscription transaction ID = ' . $subscription['id'] . '.' );
+		// The subscription was cancelled at Square - cancel it in PMPro too.
+		pmpro_handle_subscription_cancellation_at_gateway( $subscription['id'], 'square', $environment );
+		pmpro_square_webhook_log( 'Cancelled subscription with transaction ID = ' . $subscription['id'] . '.' );
+	} else {
+		// Some other change (e.g. a price edit in the Square dashboard). Re-sync the PMPro
+		// subscription so changes like the billing amount or next payment date are reflected
+		// locally without waiting for an admin to open the subscription edit screen.
+		$pmpro_subscription = PMPro_Subscription::get_subscription_from_subscription_transaction_id( $subscription['id'], 'square', $environment );
+		if ( ! empty( $pmpro_subscription ) ) {
+			$pmpro_subscription->update();
+			pmpro_square_webhook_log( 'Synced subscription with transaction ID = ' . $subscription['id'] . '.' );
+		} else {
+			pmpro_square_webhook_log( 'No PMPro subscription found for transaction ID = ' . $subscription['id'] . '.' );
+		}
 	}
 
+	pmpro_square_webhook_exit();
+
+} elseif ( $webhook['type'] === 'refund.created' || $webhook['type'] === 'refund.updated' ) {
+
+	// A refund was issued at Square for a payment.
+	pmpro_square_webhook_log( 'Webhook received: ' . $webhook['type'] );
+	pmpro_square_webhook_log( $webhook );
+
+	$refund = $webhook['data']['object']['refund'];
+
+	// Only act once the refund has actually completed.
+	if ( empty( $refund['status'] ) || $refund['status'] !== 'COMPLETED' ) {
+		pmpro_square_webhook_log( 'Refund not completed yet (status: ' . ( empty( $refund['status'] ) ? 'unknown' : $refund['status'] ) . '), no action taken.' );
+		pmpro_square_webhook_exit();
+	}
+
+	// Match the PMPro order by its stored payment transaction ID. Recurring orders store
+	// the Square order ID; one-time payments store the Square payment ID - so try both.
+	$square_order_id   = empty( $refund['order_id'] ) ? '' : $refund['order_id'];
+	$square_payment_id = empty( $refund['payment_id'] ) ? '' : $refund['payment_id'];
+	if ( empty( $square_order_id ) && empty( $square_payment_id ) ) {
+		pmpro_square_webhook_log( 'Refund has no order ID or payment ID, cannot match it to a PMPro order.' );
+		pmpro_square_webhook_exit();
+	}
+
+	$order = new MemberOrder();
+	if ( ! empty( $square_order_id ) ) {
+		$order->getMemberOrderByPaymentTransactionID( $square_order_id );
+	}
+	if ( empty( $order->id ) && ! empty( $square_payment_id ) ) {
+		$order->getMemberOrderByPaymentTransactionID( $square_payment_id );
+	}
+
+	if ( empty( $order->id ) ) {
+		pmpro_square_webhook_log( 'Could not find an order for refunded Square order ID = ' . $square_order_id . ' / payment ID = ' . $square_payment_id . '.' );
+		pmpro_square_webhook_exit();
+	}
+
+	// Already refunded - nothing to do.
+	if ( $order->status === 'refunded' ) {
+		pmpro_square_webhook_log( 'Order ID #' . $order->id . ' is already marked refunded.' );
+		pmpro_square_webhook_exit();
+	}
+
+	// Compare the refunded amount to the order total to detect partial refunds.
+	$refund_amount = isset( $refund['amount_money']['amount'] ) ? (float) $refund['amount_money']['amount'] / 100 : 0;
+	$order_total   = (float) $order->total;
+
+	if ( $refund_amount > 0 && $refund_amount < $order_total ) {
+		// Partial refund - leave membership active, just record a note (mirrors Stripe).
+		if ( method_exists( $order, 'add_order_note' ) ) {
+			$order->add_order_note( sprintf( __( 'Partial refund of %s processed at Square. Refund ID: %s', 'pmpro-square' ), pmpro_formatPrice( $refund_amount ), $refund['id'] ) );
+			$order->saveOrder();
+		}
+		pmpro_square_webhook_log( 'Partial refund of ' . $refund_amount . ' recorded for order ID #' . $order->id . '.' );
+		pmpro_square_webhook_exit();
+	}
+
+	// Full refund - mark the order refunded.
+	$order->status = 'refunded';
+	if ( method_exists( $order, 'add_order_note' ) ) {
+		$order->add_order_note( sprintf( __( 'Refund processed at Square. Refund ID: %s', 'pmpro-square' ), $refund['id'] ) );
+	}
+	$order->saveOrder();
+
+	// Notify the member and the site admin.
+	$user = get_userdata( $order->user_id );
+	if ( ! empty( $user ) ) {
+		$pmproemail = new PMProEmail();
+		$pmproemail->sendRefundedEmail( $user, $order );
+
+		$pmproemail = new PMProEmail();
+		$pmproemail->sendRefundedAdminEmail( $user, $order );
+	}
+
+	pmpro_square_webhook_log( 'Refunded order ID #' . $order->id . ' (Square order ID = ' . $square_order_id . ').' );
 	pmpro_square_webhook_exit();
 
 }
