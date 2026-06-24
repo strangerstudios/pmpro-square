@@ -1,0 +1,208 @@
+# Copyright (C) 2026 Paid Memberships Pro
+# This file is distributed under the GPLv3 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Paid Memberships Pro - Square Gateway 1.0\n"
+"Report-Msgid-Bugs-To: info@paidmembershipspro.com\n"
+"Last-Translator: Paid Memberships Pro <info@paidmembershipspro.com>\n"
+"Language-Team: Paid Memberships Pro <info@paidmembershipspro.com>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-06-24T15:21:24+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: pmpro-square\n"
+
+#. Plugin Name of the plugin
+#: pmpro-square.php
+msgid "Paid Memberships Pro - Square Gateway"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: pmpro-square.php
+msgid "https://www.paidmembershipspro.com/add-ons/square"
+msgstr ""
+
+#. Description of the plugin
+#: pmpro-square.php
+msgid "PMPro Gateway integration for Square"
+msgstr ""
+
+#. Author of the plugin
+#: pmpro-square.php
+msgid "Paid Memberships Pro"
+msgstr ""
+
+#. Author URI of the plugin
+#: pmpro-square.php
+msgid "https://www.paidmembershipspro.com"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:63
+msgid "Square"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:101
+msgid "Accept credit card, debit card, and digital wallet payments with Square. Square offers secure online checkout and competitive transaction pricing."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:127
+msgid "Square Sandbox Settings"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:135
+msgid "Sandbox Application ID"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:139
+#: classes/class.pmprogateway_square.php:192
+msgid "Enter the Application ID from Square."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:144
+msgid "Sandbox Access Token"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:148
+#: classes/class.pmprogateway_square.php:201
+msgid "Enter the Access Token from Square."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:154
+msgid "Sandbox Location"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:158
+#: classes/class.pmprogateway_square.php:211
+msgid "Default location"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:167
+#: classes/class.pmprogateway_square.php:220
+msgid "Refresh locations"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:168
+#: classes/class.pmprogateway_square.php:221
+msgid "A location is where your transactions occur. Select \"Default Location\" if you are not sure."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:180
+msgid "Square Live Settings"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:188
+msgid "Live Application ID"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:197
+msgid "Live Access Token"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:207
+msgid "Live Location"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:290
+msgid "Square is not configured."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:339
+msgid "Unknown error"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:417
+msgid "Locations have been refreshed"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:423
+msgid "Locations could not be refreshed"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:452
+msgid "Square is not configured for this environment."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:548
+msgid "Payment Information"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:557
+msgid "Square is not fully configured, so the payment fields cannot be displayed. This message is only shown to administrators. Please complete the Square gateway settings."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:607
+msgid "Unable to process payment. Please refresh the page and try again, or contact us for help."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:622
+msgid "This site uses Square, which only supports one-time payments. Recurring subscriptions cannot be processed."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:643
+#: classes/class.pmprogateway_square.php:662
+msgid "Error creating customer. Please contact us for help."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:670
+msgid "A user account is required to check out with Square. Please log in or contact us for help."
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:760
+#: classes/class.pmprogateway_square.php:765
+msgid "Error processing payment"
+msgstr ""
+
+#: classes/class.pmprogateway_square.php:826
+msgid "This site uses Square, which only supports one-time payments. Recurring subscriptions are not available. Please contact the site administrator."
+msgstr ""
+
+#: includes/admin-warnings.php:124
+msgid "One or more of your membership levels is configured with recurring billing."
+msgstr ""
+
+#: includes/admin-warnings.php:127
+msgid "One or more of your discount codes is configured with recurring billing."
+msgstr ""
+
+#: includes/admin-warnings.php:132
+msgid "Paid Memberships Pro - Square"
+msgstr ""
+
+#: includes/admin-warnings.php:134
+msgid "Square only supports one-time payments, so checkouts for these configurations will be blocked. Set an initial payment only and remove the recurring billing, or use a gateway that supports subscriptions."
+msgstr ""
+
+#: includes/admin-warnings.php:166
+msgid "Square only supports one-time payments. The recurring billing settings for this level are not supported and checkouts for this level will be blocked. Set an initial payment only."
+msgstr ""
+
+#: includes/admin-warnings.php:200
+msgid "Square only supports one-time payments. The recurring billing settings for this discount code are not supported and checkouts using it will be blocked. Set an initial payment only."
+msgstr ""
+
+#: pmpro-square.php:65
+#, php-format
+msgid "Thank you for activating the Paid Memberships Pro: Square Add On. <a href=\"%s\">Visit the payment settings page</a> to configure the Square Payment Gateway."
+msgstr ""
+
+#: pmpro-square.php:82
+msgid "Configure Square"
+msgstr ""
+
+#: pmpro-square.php:99
+msgid "View Documentation"
+msgstr ""
+
+#: pmpro-square.php:99
+msgid "Docs"
+msgstr ""
+
+#: pmpro-square.php:100
+msgid "Visit Customer Support Forum"
+msgstr ""
+
+#: pmpro-square.php:100
+msgid "Support"
+msgstr ""
