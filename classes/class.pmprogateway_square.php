@@ -46,7 +46,7 @@ class PMProGateway_square extends PMProGateway {
 			add_filter( 'pmpro_required_billing_fields', array( $this, 'required_billing_fields' ) );
 			add_action( 'admin_notices', array( $this, 'refresh_locations_manual' ) );
 
-			add_filter( 'pmpro_include_billing_address_fields', array( $this, 'include_billing_address_fields' ) );
+			add_filter( 'pmpro_include_billing_address_fields', '__return_false' );
 			add_filter( 'pmpro_include_payment_information_fields', array( $this, 'include_payment_information_fields' ) );
 
 			add_filter( 'pmpro_after_checkout_preheader', array( $this, 'clear_pmpro_review' ) );
@@ -81,7 +81,6 @@ class PMProGateway_square extends PMProGateway {
 			'square_live_application_id',
 			'square_live_personal_access_token',
 			'square_live_location_id',
-			'square_billingaddress',
 			'currency',
 			'use_ssl',
 			'tax_state',
@@ -223,32 +222,6 @@ class PMProGateway_square extends PMProGateway {
 								</td>
 							</tr>
 						<?php } ?>
-					</tbody>
-				</table>
-			</div>
-		</div>
-		<div id="pmpro_square_other" class="pmpro_section" data-visibility="shown" data-activated="true">
-			<div class="pmpro_section_toggle">
-				<button class="pmpro_section-toggle-button" type="button" aria-expanded="true">
-					<span class="dashicons dashicons-arrow-up-alt2"></span>
-					<?php esc_html_e( 'Other Square Settings', 'pmpro-square' ); ?>
-				</button>
-			</div>
-			<div class="pmpro_section_inside">
-				<table class="form-table">
-					<tbody>
-						<tr class="gateway gateway_square">
-							<th scope="row" valign="top">
-								<label for="square_billingaddress"><?php esc_html_e( 'Show Billing Address Fields in PMPro Checkout Form', 'pmpro-square' ); ?></label>
-							</th>
-							<td>
-								<select id="square_billingaddress" name="square_billingaddress">
-									<option value="0" <?php selected( empty( $values['square_billingaddress'] ) ); ?>><?php esc_html_e( 'No', 'pmpro-square' ); ?></option>
-									<option value="1" <?php selected( ! empty( $values['square_billingaddress'] ) ); ?>><?php esc_html_e( 'Yes', 'pmpro-square' ); ?></option>
-								</select>
-								<p class="description"><?php esc_html_e( "Square doesn't require billing address fields. Choose 'No' to hide them on the checkout page.", 'pmpro-square' ); ?></p>
-							</td>
-						</tr>
 					</tbody>
 				</table>
 			</div>
@@ -533,40 +506,33 @@ class PMProGateway_square extends PMProGateway {
 	}
 
 	/**
-	 * Check settings if billing address should be shown.
-	 */
-	public function include_billing_address_fields( $include ) {
-		//check settings RE showing billing address
-		if ( ! get_option( "pmpro_square_billingaddress" ) ) {
-			$include = false;
-		}
-
-		return $include;
-	}
-
-	/**
-	 * Remove required billing fields
+	 * Remove billing address fields from required fields.
+	 *
+	 * Square doesn't require a billing address, so PMPro's billing fields are hidden
+	 * on checkout (see the pmpro_include_billing_address_fields filter in init()) and
+	 * therefore should not be required. Any address that is present on the order is
+	 * still sent to Square for AVS in process().
 	 */
 	public function required_billing_fields( $fields ) {
-		global $current_user, $bemail, $bconfirmemail;
-
-		$remove = array( 'CardType', 'AccountNumber', 'ExpirationMonth', 'ExpirationYear', 'CVV' );
-
-		if ( ! get_option( "pmpro_square_billingaddress" ) ) {
-			$remove = array_merge( $remove, [ 'baddress1', 'bemail', 'bfirstname', 'blastname', 'baddress', 'bcity', 'bstate', 'bzipcode', 'bphone', 'bcountry', 'CardType' ] );
-		}
-
-		// If a user is logged in, don't require bemail either.
-		if ( ! empty( $current_user->user_email ) ) {
-			$remove        = array_merge( $remove, [ 'bemail' ] );
-			$bemail        = $current_user->user_email;
-			$bconfirmemail = $bemail;
-		}
-		
+		// Remove CC and billing address fields.
+		$remove = array(
+			'bfirstname',
+			'blastname',
+			'baddress1',
+			'bcity',
+			'bstate',
+			'bzipcode',
+			'bcountry',
+			'bphone',
+			'CardType',
+			'AccountNumber',
+			'ExpirationMonth',
+			'ExpirationYear',
+			'CVV',
+		);
 		foreach ( $remove as $field ) {
 			unset( $fields[ $field ] );
 		}
-
 		return $fields;
 	}
 
