@@ -3,7 +3,9 @@
  ![License](https://img.shields.io/badge/license-GPL--3.0%2B-red.svg?style=flat-square)
 
 ### Welcome to the Paid Memberships Pro - Square GitHub Repository
-Adds the ability to accept payments using the Square Payment Gateway.
+Adds the ability to accept one-time payments using the Square Payment Gateway.
+
+**Note:** This Add On only supports one-time payments. Recurring subscriptions are not supported, and checkouts for membership levels or discount codes configured with recurring billing will be blocked. To accept recurring payments, use a gateway that supports subscriptions, such as Stripe.
 
 For more information please visit [paidmembershipspro.com/add-ons/square](https://paidmembershipspro.com/add-ons/square)
 
