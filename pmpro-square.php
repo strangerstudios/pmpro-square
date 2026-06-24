@@ -13,21 +13,32 @@
 
 define( "PMPRO_SQUARE_DIR", plugin_dir_path( __FILE__ ) );
 define( "PMPRO_SQUARE_URL", plugin_dir_url( __FILE__ ) );
+define( "PMPRO_SQUARE_VERSION", "0.1" );
 
 /**
  * Loads rest of Square gateway if PMPro is active.
  */
 function pmpro_square_load_gateway() {
 
-	load_plugin_textdomain( 'pmpro-square' );
-
 	if ( class_exists( 'PMProGateway' ) ) {
-		require_once( PMPRO_SQUARE_DIR . 'includes/libs/autoload.php' );
 		require_once( PMPRO_SQUARE_DIR . 'classes/class.pmprogateway_square.php' );
+
+		// Admin warnings for recurring levels/discount codes (Square is one-time only).
+		if ( is_admin() ) {
+			require_once( PMPRO_SQUARE_DIR . 'includes/admin-warnings.php' );
+		}
 	}
 
 }
 add_action( 'plugins_loaded', 'pmpro_square_load_gateway' );
+
+/**
+ * Load the plugin's text domain for translations.
+ */
+function pmpro_square_load_textdomain() {
+	load_plugin_textdomain( 'pmpro-square', false, basename( dirname( __FILE__ ) ) . '/languages' );
+}
+add_action( 'init', 'pmpro_square_load_textdomain' );
 
 
 /**
@@ -38,11 +49,6 @@ add_action( 'plugins_loaded', 'pmpro_square_load_gateway' );
 function pmpro_square_admin_notice_activation_hook() {
 	// Create transient data.
 	set_transient( 'pmpro-square-admin-notice', true, 5 );
-
-	// Cron to check the webhook status.
-	if ( ! wp_next_scheduled( 'pmpro_square_check_webhooks_status' ) ) {
-		wp_schedule_event( time(), 'weekly', 'pmpro_square_check_webhooks_status' );
-	}
 }
 register_activation_hook( __FILE__, 'pmpro_square_admin_notice_activation_hook' );
 

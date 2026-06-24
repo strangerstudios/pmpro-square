@@ -5,8 +5,14 @@ async function pmpro_square_init_card( payments ) {
 }
 
 
-async function pmpro_square_set_payment_token( token ) {
-	jQuery( '#pmpro_form' ).append( '<input type="hidden" name="square_payment_token" value="' + token + '" />' ).submit();
+async function pmpro_square_set_payment_token( token, verificationToken ) {
+	const form = jQuery( '#pmpro_form' );
+	form.append( '<input type="hidden" name="square_payment_token" value="' + token + '" />' );
+	// Send the SCA verification token so the server can apply it to the payment / card on file.
+	if ( verificationToken ) {
+		form.append( '<input type="hidden" name="square_verification_token" value="' + verificationToken + '" />' );
+	}
+	form.submit();
 }
 
  // This function tokenizes a payment method.
@@ -85,7 +91,7 @@ document.addEventListener(
 			try {
 				const pmpro_square_token      = await pmpro_square_tokenize( paymentMethod );
 				const pmpro_square_verification_token = await pmpro_square_verify_buyer( pmpro_square_payments, pmpro_square_token );
-				await pmpro_square_set_payment_token( pmpro_square_token );
+				await pmpro_square_set_payment_token( pmpro_square_token, pmpro_square_verification_token );
 			} catch (e) {
 				pmpro_square_display_payment_results( 'FAILURE' );
 			}
