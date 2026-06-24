@@ -2,8 +2,8 @@
 Contributors: strangerstudios
 Tags: paid memberships pro, payment gateway, square
 Requires at least: 5.5
-Tested up to: 6.7.1
-Stable tag: 0.1
+Tested up to: 7.0
+Stable tag: 1.0
 
 Adds the ability to accept one-time payments using the Square Payment Gateway
 
@@ -39,5 +39,5 @@ Please visit our premium support site at http://www.paidmembershipspro.com for m
 
 == Changelog ==
 
-= 0.1 - XXXX-XX-XX =
-* Initial Release
+= 1.0 - 2026-06-24 =
+* Initial release.

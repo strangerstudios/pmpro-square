@@ -93,7 +93,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Description shown for this gateway on the Payment Settings page.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 *
 	 * @return string The gateway description.
 	 */
@@ -108,7 +108,7 @@ class PMProGateway_square extends PMProGateway {
 	 * natively instead of relying on the legacy pmpro_payment_option_fields
 	 * filter and its compatibility shim.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 */
 	public static function show_settings_fields() {
 		// Build the values array from saved options.
@@ -236,7 +236,7 @@ class PMProGateway_square extends PMProGateway {
 	 * specific to this gateway; global options (gateway, environment,
 	 * currency, tax, etc.) are saved by PMPro core on the main settings page.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 */
 	public static function save_settings_fields() {
 		// Options that are global to all gateways and saved elsewhere by core.
@@ -321,7 +321,7 @@ class PMProGateway_square extends PMProGateway {
 	/**
 	 * Get a readable error message from an api_request() result.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 *
 	 * @param array $result The result array from api_request().
 	 * @return string
@@ -804,7 +804,7 @@ class PMProGateway_square extends PMProGateway {
 	 * pmpro_getLevelAtCheckout() earlier in the checkout preheader), so this also covers
 	 * recurring discount codes.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 *
 	 * @param bool $continue Whether the checkout should continue.
 	 * @return bool
@@ -836,7 +836,7 @@ class PMProGateway_square extends PMProGateway {
 	 * Uses the currency's configured number of decimal places so zero-decimal currencies such
 	 * as JPY use a factor of 1 (no multiplication) rather than the hardcoded x100.
 	 *
-	 * @since TBD
+	 * @since 1.0
 	 *
 	 * @param float|string $price The price in the major currency unit.
 	 * @return int The amount in the currency's minor unit, as an integer.

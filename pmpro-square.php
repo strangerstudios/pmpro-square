@@ -3,7 +3,7 @@
  * Plugin Name: Paid Memberships Pro - Square Gateway
  * Plugin URI: https://www.paidmembershipspro.com/add-ons/square
  * Description: PMPro Gateway integration for Square
- * Version: 0.1
+ * Version: 1.0
  * Author: Paid Memberships Pro
  * Author URI: https://www.paidmembershipspro.com
  * Text Domain: pmpro-square
@@ -13,7 +13,7 @@
 
 define( "PMPRO_SQUARE_DIR", plugin_dir_path( __FILE__ ) );
 define( "PMPRO_SQUARE_URL", plugin_dir_url( __FILE__ ) );
-define( "PMPRO_SQUARE_VERSION", "0.1" );
+define( "PMPRO_SQUARE_VERSION", "1.0" );
 
 /**
  * Loads rest of Square gateway if PMPro is active.
