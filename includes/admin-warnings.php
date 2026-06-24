@@ -136,6 +136,7 @@ function pmpro_square_admin_recurring_notice() {
 	</div>
 	<?php
 }
+add_action( 'admin_notices', 'pmpro_square_admin_recurring_notice' );
 
 /**
  * Output an inline warning in the Billing Details section of the Edit Membership
@@ -166,6 +167,7 @@ function pmpro_square_admin_level_warning( $level ) {
 	</div>
 	<?php
 }
+add_action( 'pmpro_membership_level_after_billing_details_settings', 'pmpro_square_admin_level_warning' );
 
 /**
  * Output an inline warning on the Edit Discount Code screen when Square is active
@@ -199,7 +201,4 @@ function pmpro_square_admin_discount_warning( $edit, $level ) {
 	</div>
 	<?php
 }
-
-add_action( 'admin_notices', 'pmpro_square_admin_recurring_notice' );
-add_action( 'pmpro_membership_level_after_billing_details_settings', 'pmpro_square_admin_level_warning' );
 add_action( 'pmpro_discount_code_after_level_settings', 'pmpro_square_admin_discount_warning', 10, 2 );
