@@ -1,3 +1,5 @@
+![](pmpro-square-banner.png)
+
 # [Paid Memberships Pro - Square](https://paidmembershipspro.com/add-ons/square) #
 
  ![License](https://img.shields.io/badge/license-GPL--3.0%2B-red.svg?style=flat-square)
