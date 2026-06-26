@@ -501,6 +501,9 @@ class PMProGateway_square extends PMProGateway {
 				'intent'         => $intent,
 				'amount'         => $initial_payment,
 				'currency'       => $pmpro_currency,
+				// Seed the JS billing-required flag so free checkouts (including discount
+				// codes that zero the price) skip tokenization. Mirrors the Stripe gateway.
+				'pmpro_require_billing' => $pmpro_requirebilling,
 			)
 		);
 	}
@@ -540,8 +543,9 @@ class PMProGateway_square extends PMProGateway {
 	 * Use our own payment fields at checkout.
 	 */
 	public function include_payment_information_fields() {
+		global $pmpro_requirebilling;
 		?>
-		<fieldset id="pmpro_payment_information_fields" class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_fieldset', 'pmpro_payment_information_fields' ) ); ?>">
+		<fieldset id="pmpro_payment_information_fields" class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_fieldset', 'pmpro_payment_information_fields' ) ); ?>" <?php if ( ! $pmpro_requirebilling || apply_filters( 'pmpro_hide_payment_information_fields', false ) ) { ?>style="display: none;"<?php } ?>>
 			<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card' ) ); ?>">
 				<div class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_card_content' ) ); ?>">
 					<legend class="<?php echo esc_attr( pmpro_get_element_class( 'pmpro_form_legend' ) ); ?>">

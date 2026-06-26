@@ -51,10 +51,17 @@ async function pmpro_square_set_payment_token( token, verificationToken ) {
 	 statusContainer.style.visibility = 'visible';
  }
 
+// Kept in sync by PMPro core and the applydiscountcode service.
+var pmpro_require_billing;
+
 var pmpro_square_card;
 document.addEventListener(
 	'DOMContentLoaded',
 	async function ( e ) {
+		if ( typeof pmpro_require_billing === 'undefined' ) {
+			pmpro_require_billing = pmpro_square_vars.pmpro_require_billing;
+		}
+
 		if ( ! window.Square ) {
 			throw new Error( 'Square.js failed to load properly' );
 		}
@@ -87,6 +94,10 @@ document.addEventListener(
 		}
 		
 		async function pmpro_square_handle_submission( event, paymentMethod ) {
+			// No payment due, so skip tokenization and let the form submit normally.
+			if ( ! pmpro_require_billing ) {
+				return;
+			}
 			event.preventDefault();
 			try {
 				const pmpro_square_token      = await pmpro_square_tokenize( paymentMethod );
