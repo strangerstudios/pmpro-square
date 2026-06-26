@@ -16,7 +16,7 @@ msgstr ""
 
 #. Plugin Name of the plugin
 #: pmpro-square.php
-msgid "Paid Memberships Pro - Square Gateway"
+msgid "Paid Memberships Pro - Square Add On"
 msgstr ""
 
 #. Plugin URI of the plugin
@@ -44,7 +44,7 @@ msgid "Square"
 msgstr ""
 
 #: classes/class.pmprogateway_square.php:101
-msgid "Accept credit card, debit card, and digital wallet payments with Square. Square offers secure online checkout and competitive transaction pricing."
+msgid "Accept credit card and debit card payments with Square. Square offers secure online checkout and competitive transaction pricing."
 msgstr ""
 
 #: classes/class.pmprogateway_square.php:127
@@ -124,46 +124,36 @@ msgstr ""
 msgid "Square is not configured for this environment."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:548
 #: classes/class.pmprogateway_square.php:552
 msgid "Payment Information"
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:557
 #: classes/class.pmprogateway_square.php:561
 msgid "Square is not fully configured, so the payment fields cannot be displayed. This message is only shown to administrators. Please complete the Square gateway settings."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:607
 #: classes/class.pmprogateway_square.php:611
 msgid "Unable to process payment. Please refresh the page and try again, or contact us for help."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:622
 #: classes/class.pmprogateway_square.php:626
 msgid "This site uses Square, which only supports one-time payments. Recurring subscriptions cannot be processed."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:643
-#: classes/class.pmprogateway_square.php:662
 #: classes/class.pmprogateway_square.php:647
 #: classes/class.pmprogateway_square.php:666
 msgid "Error creating customer. Please contact us for help."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:670
 #: classes/class.pmprogateway_square.php:674
 msgid "A user account is required to check out with Square. Please log in or contact us for help."
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:760
-#: classes/class.pmprogateway_square.php:765
 #: classes/class.pmprogateway_square.php:764
 #: classes/class.pmprogateway_square.php:769
 msgid "Error processing payment"
 msgstr ""
 
-#: classes/class.pmprogateway_square.php:826
 #: classes/class.pmprogateway_square.php:830
 msgid "This site uses Square, which only supports one-time payments. Recurring subscriptions are not available. Please contact the site administrator."
 msgstr ""
@@ -215,13 +205,4 @@ msgstr ""
 
 #: pmpro-square.php:100
 msgid "Support"
-msgstr ""
-
-#. Plugin Name of the plugin
-#: pmpro-square.php
-msgid "Paid Memberships Pro - Square Add On"
-msgstr ""
-
-#: classes/class.pmprogateway_square.php:101
-msgid "Accept credit card and debit card payments with Square. Square offers secure online checkout and competitive transaction pricing."
 msgstr ""
