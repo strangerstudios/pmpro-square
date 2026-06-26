@@ -2,21 +2,21 @@
 # This file is distributed under the GPLv3 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Paid Memberships Pro - Square Gateway 1.0\n"
+"Project-Id-Version: Paid Memberships Pro - Square Add On 1.0\n"
 "Report-Msgid-Bugs-To: info@paidmembershipspro.com\n"
 "Last-Translator: Paid Memberships Pro <info@paidmembershipspro.com>\n"
 "Language-Team: Paid Memberships Pro <info@paidmembershipspro.com>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-24T15:21:24+00:00\n"
+"POT-Creation-Date: 2026-06-26T13:48:36+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: pmpro-square\n"
 
 #. Plugin Name of the plugin
 #: pmpro-square.php
-msgid "Paid Memberships Pro - Square Gateway"
+msgid "Paid Memberships Pro - Square Add On"
 msgstr ""
 
 #. Plugin URI of the plugin
@@ -44,7 +44,7 @@ msgid "Square"
 msgstr ""
 
 #: classes/class.pmprogateway_square.php:101
-msgid "Accept credit card, debit card, and digital wallet payments with Square. Square offers secure online checkout and competitive transaction pricing."
+msgid "Accept credit card and debit card payments with Square. Square offers secure online checkout and competitive transaction pricing."
 msgstr ""
 
 #: classes/class.pmprogateway_square.php:127
