@@ -2,8 +2,8 @@
 Contributors: strangerstudios
 Tags: paid memberships pro, payment gateway, square
 Requires at least: 5.5
-Tested up to: 6.9
-Stable tag: 1.0
+Tested up to: 7.0
+Stable tag: 1.0.1
 
 Adds the ability to accept one-time payments using the Square Payment Gateway
 
@@ -38,6 +38,10 @@ Please post it in the GitHub issue tracker here: https://github.com/strangerstud
 Please visit our premium support site at https://www.paidmembershipspro.com for more documentation and our support forums.
 
 == Changelog ==
+
+= 1.0.1 - 2026-06-26 =
+* BUG FIX: Fixed free checkouts (free levels, or discount codes that reduce the total to $0) failing to submit when Square is the active gateway. #23 (@dparker1005)
+* BUG FIX: Corrected the Square gateway description shown on the Payment Settings page to accurately reflect supported payment methods (credit and debit card only). #22 (@dparker1005)
 
 = 1.0 - 2026-06-24 =
 * Initial release.
