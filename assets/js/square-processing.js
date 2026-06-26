@@ -51,10 +51,7 @@ async function pmpro_square_set_payment_token( token, verificationToken ) {
 	 statusContainer.style.visibility = 'visible';
  }
 
-// Mirrors the PMPro Stripe integration: track whether billing is required for this
-// checkout. PMPro seeds this from the server and the applydiscountcode service updates it
-// when a code is applied (e.g. a code that zeroes the price sets it to false), so reading
-// it at submit time also covers the case where a discount code makes the order free.
+// Kept in sync by PMPro core and the applydiscountcode service.
 var pmpro_require_billing;
 
 var pmpro_square_card;
@@ -97,11 +94,7 @@ document.addEventListener(
 		}
 		
 		async function pmpro_square_handle_submission( event, paymentMethod ) {
-			// When billing is not required - a free level, or a discount code that zeroed the
-			// price - there is no card to tokenize. Let the form submit normally so PMPro
-			// completes the checkout through its free path. This mirrors the PMPro Stripe
-			// integration, which gates on the same global that the applydiscountcode service
-			// keeps in sync, so it stays correct even when a code is applied after page load.
+			// No payment due, so skip tokenization and let the form submit normally.
 			if ( ! pmpro_require_billing ) {
 				return;
 			}
