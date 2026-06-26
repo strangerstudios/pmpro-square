@@ -2,7 +2,7 @@
 Contributors: strangerstudios
 Tags: paid memberships pro, payment gateway, square
 Requires at least: 5.5
-Tested up to: 7.0
+Tested up to: 6.9
 Stable tag: 1.0
 
 Adds the ability to accept one-time payments using the Square Payment Gateway
@@ -13,7 +13,7 @@ Adds Square as a payment gateway to your list of accepted payment gateways.
 
 **Note:** This Add On only supports one-time payments. Recurring subscriptions are not supported, and checkouts for membership levels or discount codes configured with recurring billing will be blocked. To accept recurring payments, use a gateway that supports subscriptions, such as Stripe.
 
-[Read the full documentation for the Square Add On](https://www.paidmembershipspro.com/add-ons/square-payment-gateway/)
+[Read the full documentation for the Square Add On](https://www.paidmembershipspro.com/add-ons/square/)
 
 = Official Paid Memberships Pro Add On =
 
@@ -35,7 +35,7 @@ Please post it in the GitHub issue tracker here: https://github.com/strangerstud
 
 = I need help installing, configuring, or customizing the plugin. =
 
-Please visit our premium support site at http://www.paidmembershipspro.com for more documentation and our support forums.
+Please visit our premium support site at https://www.paidmembershipspro.com for more documentation and our support forums.
 
 == Changelog ==
 

@@ -1,6 +1,6 @@
 <?php
 /*
- * Plugin Name: Paid Memberships Pro - Square Gateway
+ * Plugin Name: Paid Memberships Pro - Square Add On
  * Plugin URI: https://www.paidmembershipspro.com/add-ons/square
  * Description: PMPro Gateway integration for Square
  * Version: 1.0
@@ -44,7 +44,7 @@ add_action( 'init', 'pmpro_square_load_textdomain' );
 /**
  * Runs only when the plugin is activated.
  *
- * @since 0.1.0
+ * @since 1.0
  */
 function pmpro_square_admin_notice_activation_hook() {
 	// Create transient data.
@@ -55,7 +55,7 @@ register_activation_hook( __FILE__, 'pmpro_square_admin_notice_activation_hook' 
 /**
  * Admin Notice on Activation.
  *
- * @since 0.1.0
+ * @since 1.0
  */
 function pmpro_square_admin_notice() {
 	// Check transient, if available display notice.
