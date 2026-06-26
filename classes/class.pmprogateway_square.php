@@ -98,7 +98,7 @@ class PMProGateway_square extends PMProGateway {
 	 * @return string The gateway description.
 	 */
 	public static function get_description_for_gateway_settings() {
-		return esc_html__( 'Accept credit card, debit card, and digital wallet payments with Square. Square offers secure online checkout and competitive transaction pricing.', 'pmpro-square' );
+		return esc_html__( 'Accept credit card and debit card payments with Square. Square offers secure online checkout and competitive transaction pricing.', 'pmpro-square' );
 	}
 
 	/**
